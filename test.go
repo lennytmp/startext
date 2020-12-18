@@ -15,7 +15,7 @@ import (
 
 const (
 	GAME_UNIT_SCV                = 0
-	GAME_BUILDING_COMMAND_CENTER = 0
+	GAME_BUILDING_COMMAND_CENTER = 1
 	TASK_TYPE_BUILD_SCV          = 0
 	COST_SCV_MINERALS            = 50
 
