@@ -4,18 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-    "math/rand"
 )
 
 const (
-	UNIT_SCV          = 0
-	COST_SCV_MINERALS = 50
+	GAME_UNIT_SCV                = 0
+	GAME_BUILDING_COMMAND_CENTER = 0
+	TASK_TYPE_BUILD_SCV          = 0
+	COST_SCV_MINERALS            = 50
 
 	STATUS_IDLE   = 0
 	STATUS_MINING = 1
@@ -31,7 +33,7 @@ func main() {
 			start := time.Now()
 			gameSim(&testGame)
 			elapsed := time.Now().Sub(start)
-			time.Sleep(3 * time.Second - elapsed)
+			time.Sleep(3*time.Second - elapsed)
 			fmt.Printf("[%s]: Elapsed: %s\n", time.Now(), elapsed)
 		}
 	}()
@@ -43,41 +45,41 @@ func gameSim(g *Game) {
 	if len(g.Players) == 0 {
 		initGame(g)
 	}
-    g.objectsMu.Lock()
-    var killedIDs []int
+	g.objectsMu.Lock()
+	var killedIDs []int
 	for i, gob := range testGame.Objects {
-        if gob.Status == STATUS_MINING {
-            g.Players[gob.Owner].mu.Lock()
-            g.Players[gob.Owner].Minerals += gob.yps
-            g.Players[gob.Owner].mu.Unlock()
-        }
-        if gob.Status == STATUS_IDLE {
-            var targetIDs []int
-            for j, pt := range testGame.Objects {
-                if pt.Owner != gob.Owner && pt.Location == gob.Location {
-                    targetIDs = append(targetIDs, j)
-                }
-            }
-            if len(targetIDs) != 0 {
-                targetID := targetIDs[rand.Intn(len(targetIDs))]
-                g.Objects[targetID].Hp -= gob.dps
-                if g.Objects[targetID].Hp <= 0 {
-                    killedIDs = append(killedIDs, targetID)
-                    fmt.Printf("[%s]: SCV killed [%d-->%d]\n", time.Now(), i, targetID)
-                }
-            }
-        }
-    }
-    for i := range killedIDs {
-        g.Objects = remove(g.Objects, killedIDs[i])
-    }
-    g.objectsMu.Unlock()
+		if gob.Status == STATUS_MINING {
+			g.Players[gob.Owner].mu.Lock()
+			g.Players[gob.Owner].Minerals += gob.yps
+			g.Players[gob.Owner].mu.Unlock()
+		}
+		if gob.Status == STATUS_IDLE {
+			var targetIDs []int
+			for j, pt := range testGame.Objects {
+				if pt.Owner != gob.Owner && pt.Location == gob.Location {
+					targetIDs = append(targetIDs, j)
+				}
+			}
+			if len(targetIDs) != 0 {
+				targetID := targetIDs[rand.Intn(len(targetIDs))]
+				g.Objects[targetID].Hp -= gob.dps
+				if g.Objects[targetID].Hp <= 0 {
+					killedIDs = append(killedIDs, targetID)
+					fmt.Printf("[%s]: SCV killed [%d-->%d]\n", time.Now(), i, targetID)
+				}
+			}
+		}
+	}
+	for i := range killedIDs {
+		g.Objects = remove(g.Objects, killedIDs[i])
+	}
+	g.objectsMu.Unlock()
 }
 
 // Kudos to https://stackoverflow.com/questions/37334119/how-to-delete-an-element-from-a-slice-in-golang
-func remove(s []Unit, i int) []Unit {
-    s[len(s)-1], s[i] = s[i], s[len(s)-1]
-    return s[:len(s)-1]
+func remove(s []GameObject, i int) []GameObject {
+	s[len(s)-1], s[i] = s[i], s[len(s)-1]
+	return s[:len(s)-1]
 }
 
 func initGame(g *Game) {
@@ -87,19 +89,36 @@ func initGame(g *Game) {
 		for j := 0; j < 5; j++ {
 			g.Objects = append(g.Objects, SCV(i, i))
 		}
+		g.Objects = append(g.Objects, CommandCenter(i, i))
 	}
 	fmt.Printf("[%s]: Game started\n", time.Now())
 }
 
-func SCV(owner int, location int) Unit {
-	return Unit{
+func CommandCenter(owner int, location int) GameObject {
+	return GameObject{
+		Owner:    owner,
+		Location: location,
+		Hp:       1500,
+		HpMax:    1500,
+		Type:     GAME_BUILDING_COMMAND_CENTER,
+		Building: Building{
+			taskSpeed: 1,
+		},
+	}
+}
+
+func SCV(owner int, location int) GameObject {
+	return GameObject{
 		Owner:    owner,
 		Location: location,
 		Hp:       60,
 		HpMax:    60,
-		dps:      8,
-		speed:    4,
-		yps:      1,
+		Type:     GAME_UNIT_SCV,
+		Unit: Unit{
+			dps:   8,
+			speed: 4,
+			yps:   1,
+		},
 	}
 }
 
@@ -113,7 +132,7 @@ type Player struct {
 type Game struct {
 	Players   []Player
 	Locations []Location
-	Objects   []Unit
+	Objects   []GameObject
 	objectsMu sync.Mutex
 }
 
@@ -127,22 +146,22 @@ func (g Game) String() string {
 }
 
 func (g Game) Export(playerID int) string {
-    eg := Game{}
-    eg.Players = append(eg.Players, g.Players[playerID])
-    for _,v := range g.Locations {
-        eg.Locations = append(eg.Locations, v)
-    }
-    visLocIds := make(map[int]bool)
-    for _,v := range g.Objects {
-        if v.Owner == playerID {
-            visLocIds[v.Location] = true
-        }
-    }
-    for _,v := range g.Objects {
-        if _, ok := visLocIds[v.Location]; ok {
-            eg.Objects = append(eg.Objects, v)
-        }
-    }
+	eg := Game{}
+	eg.Players = append(eg.Players, g.Players[playerID])
+	for _, v := range g.Locations {
+		eg.Locations = append(eg.Locations, v)
+	}
+	visLocIds := make(map[int]bool)
+	for _, v := range g.Objects {
+		if v.Owner == playerID {
+			visLocIds[v.Location] = true
+		}
+	}
+	for _, v := range g.Objects {
+		if _, ok := visLocIds[v.Location]; ok {
+			eg.Objects = append(eg.Objects, v)
+		}
+	}
 
 	b, err := json.Marshal(eg)
 	if err != nil {
@@ -152,15 +171,32 @@ func (g Game) Export(playerID int) string {
 	return string(b)
 }
 
-type Unit struct {
+type GameObject struct {
 	Owner    int
 	Location int
 	Hp       int
 	HpMax    int
-	dps      int
-	speed    int
-	Status   int
-	yps      int
+	Type     int
+	Building
+	Unit
+}
+
+type Building struct {
+	Task      Task
+	taskSpeed int
+	Queue     []int // An array of task types
+}
+
+type Task struct {
+	Type     int
+	Progress int
+}
+
+type Unit struct {
+	dps    int
+	speed  int
+	Status int
+	yps    int
 }
 
 type countHandler struct{}
@@ -223,8 +259,8 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !checkGetParamExists(q, "location_id") {
-        fmt.Fprintf(w, "%s", testGame.Export(playerID))
-    }
+		fmt.Fprintf(w, "%s", testGame.Export(playerID))
+	}
 
 	locID, err := getLocationID(q, "location_id")
 	if err != nil {
@@ -282,14 +318,14 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    fmt.Fprintf(w, "%s", `{"error":{"message":"Not supported action"}}`)
+	fmt.Fprintf(w, "%s", `{"error":{"message":"Not supported action"}}`)
 }
 
 func sendSCV(playerID int, locID int, destID int) error {
 	testGame.objectsMu.Lock()
 	defer testGame.objectsMu.Unlock()
 	for i, gob := range testGame.Objects {
-		if gob.Owner == playerID && gob.Location == locID && gob.Status == STATUS_IDLE {
+		if gob.Type == GAME_UNIT_SCV && gob.Owner == playerID && gob.Location == locID && gob.Status == STATUS_IDLE {
 			testGame.Objects[i].Location = destID
 			return nil
 		}
