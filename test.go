@@ -337,7 +337,7 @@ func statusSCV(playerID int, locID int, status_from int, status_to int) error {
 	testGame.objectsMu.Lock()
 	defer testGame.objectsMu.Unlock()
 	for i, gob := range testGame.Objects {
-		if gob.Owner == playerID && gob.Location == locID && gob.Status == status_from {
+		if gob.Type == GAME_UNIT_SCV && gob.Owner == playerID && gob.Location == locID && gob.Status == status_from {
 			testGame.Objects[i].Status = status_to
 			return nil
 		}
