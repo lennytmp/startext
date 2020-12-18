@@ -80,9 +80,13 @@ func gameSim(g *Game) {
 			}
 		}
 	}
-	for zombie := range killedIDs {
-		g.Objects = remove(g.Objects, zombie)
+	var nos []GameObject
+	for k, v := range g.Objects {
+		if !killedIDs[k] {
+			nos = append(nos, v)
+		}
 	}
+	g.Objects = nos
 	g.objectsMu.Unlock()
 }
 
