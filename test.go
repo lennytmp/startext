@@ -126,6 +126,32 @@ func (g Game) String() string {
 	return string(b)
 }
 
+func (g Game) Export(playerID int) string {
+    eg := Game{}
+    eg.Players = append(eg.Players, g.Players[playerID])
+    for _,v := range g.Locations {
+        eg.Locations = append(eg.Locations, v)
+    }
+    visLocIds := make(map[int]bool)
+    for _,v := range g.Objects {
+        if v.Owner == playerID {
+            visLocIds[v.Location] = true
+        }
+    }
+    for _,v := range g.Objects {
+        if _, ok := visLocIds[v.Location]; ok {
+            eg.Objects = append(eg.Objects, v)
+        }
+    }
+
+	b, err := json.Marshal(eg)
+	if err != nil {
+		fmt.Printf("[%s]:ERROR json.Marshal %v %v\n", time.Now(), g, err)
+		return ""
+	}
+	return string(b)
+}
+
 type Unit struct {
 	Owner    int
 	Location int
@@ -185,7 +211,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[%s]: Request received from %s, url: %s\n", time.Now(), r.RemoteAddr, r.URL)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	q := r.URL.Query()
-	// If no player is given - let them observe.
+	// If no player is given - let them observe all.
 	if !checkGetParamExists(q, "player_id") {
 		fmt.Fprintf(w, "%s", testGame.String())
 		return
@@ -196,6 +222,10 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
+	if !checkGetParamExists(q, "location_id") {
+        fmt.Fprintf(w, "%s", testGame.Export(playerID))
+    }
+
 	locID, err := getLocationID(q, "location_id")
 	if err != nil {
 		fmt.Fprintf(w, "%s", httpError(err))
@@ -252,7 +282,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(w, "%s", `{"error":{"message":"Not supported action"}}`)
+    fmt.Fprintf(w, "%s", `{"error":{"message":"Not supported action"}}`)
 }
 
 func sendSCV(playerID int, locID int, destID int) error {
