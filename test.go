@@ -46,7 +46,7 @@ func gameSim(g *Game) {
 		initGame(g)
 	}
 	g.objectsMu.Lock()
-	var killedIDs []int
+	killedIDs := make(map[int]bool)
 	for i, gob := range testGame.Objects {
 		if gob.Status == STATUS_MINING {
 			g.Players[gob.Owner].mu.Lock()
@@ -64,14 +64,14 @@ func gameSim(g *Game) {
 				targetID := targetIDs[rand.Intn(len(targetIDs))]
 				g.Objects[targetID].Hp -= gob.dps
 				if g.Objects[targetID].Hp <= 0 {
-					killedIDs = append(killedIDs, targetID)
+					killedIDs[targetID] = true
 					fmt.Printf("[%s]: SCV killed [%d-->%d]\n", time.Now(), i, targetID)
 				}
 			}
 		}
 	}
-	for i := range killedIDs {
-		g.Objects = remove(g.Objects, killedIDs[i])
+	for zombie := range killedIDs {
+		g.Objects = remove(g.Objects, zombie)
 	}
 	g.objectsMu.Unlock()
 }
