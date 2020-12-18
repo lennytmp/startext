@@ -14,10 +14,12 @@ import (
 )
 
 const (
-	GAME_UNIT_SCV                = 0
-	GAME_BUILDING_COMMAND_CENTER = 1
-	TASK_TYPE_BUILD_SCV          = 0
-	COST_SCV_MINERALS            = 50
+	GAME_UNIT_SCV                = 1
+	GAME_BUILDING_COMMAND_CENTER = 2
+
+	TASK_TYPE_BUILD_SCV = 1
+
+	COST_SCV_MINERALS = 50
 
 	STATUS_IDLE   = 0
 	STATUS_MINING = 1
@@ -53,7 +55,7 @@ func gameSim(g *Game) {
 			g.Players[gob.Owner].Minerals += gob.yps
 			g.Players[gob.Owner].mu.Unlock()
 		}
-		if gob.Status == STATUS_IDLE {
+		if gob.Type == GAME_UNIT_SCV && gob.Status == STATUS_IDLE {
 			var targetIDs []int
 			for j, pt := range testGame.Objects {
 				if pt.Owner != gob.Owner && pt.Location == gob.Location {
@@ -67,6 +69,14 @@ func gameSim(g *Game) {
 					killedIDs[targetID] = true
 					fmt.Printf("[%s]: SCV killed [%d-->%d]\n", time.Now(), i, targetID)
 				}
+			}
+		}
+		if gob.Type == GAME_BUILDING_COMMAND_CENTER && gob.Building.Task != (Task{}) {
+			g.Objects[i].Task.Progress += gob.taskSpeed
+			if g.Objects[i].Task.Progress >= 100 {
+				fmt.Printf("[%s]: SCV: good to go sir\n", time.Now())
+				testGame.Objects = append(testGame.Objects, SCV(gob.Owner, gob.Location))
+				g.Objects[i].Task = Task{}
 			}
 		}
 	}
@@ -102,7 +112,7 @@ func CommandCenter(owner int, location int) GameObject {
 		HpMax:    1500,
 		Type:     GAME_BUILDING_COMMAND_CENTER,
 		Building: Building{
-			taskSpeed: 1,
+			taskSpeed: 20,
 		},
 	}
 }
@@ -260,6 +270,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if !checkGetParamExists(q, "location_id") {
 		fmt.Fprintf(w, "%s", testGame.Export(playerID))
+		return
 	}
 
 	locID, err := getLocationID(q, "location_id")
@@ -349,8 +360,22 @@ func statusSCV(playerID int, locID int, status_from int, status_to int) error {
 }
 
 func buildSCV(playerID int, locID int) error {
-	if playerID != locID {
-		return fmt.Errorf("No command center at location %d, my base location is %d", locID, playerID)
+	testGame.objectsMu.Lock()
+	defer testGame.objectsMu.Unlock()
+
+	ccFound := false
+	var ccID int
+	for i, gob := range testGame.Objects {
+		if gob.Type == GAME_BUILDING_COMMAND_CENTER && gob.Location == locID && gob.Owner == playerID {
+			ccFound = true
+			ccID = i
+		}
+	}
+	if !ccFound {
+		return fmt.Errorf("No command center at location %d", locID)
+	}
+	if (Task{}) != testGame.Objects[ccID].Building.Task {
+		return fmt.Errorf("The command center is busy, sorry")
 	}
 	pl := &testGame.Players[playerID]
 	pl.mu.Lock()
@@ -359,10 +384,7 @@ func buildSCV(playerID int, locID int) error {
 		return fmt.Errorf("Not enogh minerals, need %d, have %d", COST_SCV_MINERALS, pl.Minerals)
 	}
 	pl.Minerals -= COST_SCV_MINERALS
-
-	testGame.objectsMu.Lock()
-	defer testGame.objectsMu.Unlock()
-	testGame.Objects = append(testGame.Objects, SCV(playerID, playerID))
+	testGame.Objects[ccID].Building.Task = Task{Type: TASK_TYPE_BUILD_SCV}
 	return nil
 }
 
