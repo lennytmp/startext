@@ -29,6 +29,7 @@ const (
 var testGame *Game
 
 func main() {
+
 	testGame = newGame()
 	go func() {
 		for {
@@ -152,6 +153,11 @@ type Game struct {
 	Locations []Location
 	Objects   []GameObject
 	objectsMu sync.Mutex
+}
+
+type Lobby struct {
+    running map[string]*Game
+    waiting map[string]*Game
 }
 
 func newGame() *Game {
