@@ -57,7 +57,7 @@ func updLobby(l *Lobby) {
 			continue
 		}
 		if passed > 4*time.Second {
-			fmt.Printf("[%s]: WARNING: %s game is more than %d seconds late\n", now, n, passed)
+			log.Printf("WARNING: %s game is more than %f seconds late", n, passed.Seconds())
 		}
 		gameSim(g)
 	}
@@ -87,14 +87,14 @@ func gameSim(g *Game) {
 				g.Objects[targetID].Hp -= gob.dps
 				if g.Objects[targetID].Hp <= 0 {
 					killedIDs[targetID] = true
-					fmt.Printf("[%s]: SCV killed [%d-->%d]\n", time.Now(), i, targetID)
+					log.Printf("SCV killed [%d-->%d]", i, targetID)
 				}
 			}
 		}
 		if gob.Type == GAME_BUILDING_COMMAND_CENTER && gob.Building.Task != (Task{}) {
 			g.Objects[i].Task.Progress += gob.taskSpeed
 			if g.Objects[i].Task.Progress >= 100 {
-				fmt.Printf("[%s]: SCV: good to go sir\n", time.Now())
+				log.Printf("SCV: good to go sir, %s", gob.Owner)
 				g.Objects = append(g.Objects, SCV(gob.Owner, gob.Location))
 				g.Objects[i].Task = Task{}
 			}
@@ -146,7 +146,7 @@ func initGame(g *Game) {
 		}
 		g.Objects = append(g.Objects, CommandCenter(pl, k))
 	}
-	fmt.Printf("[%s]: Game started\n", time.Now())
+	log.Printf("Game started")
 }
 
 func CommandCenter(owner string, location int) GameObject {
@@ -216,7 +216,7 @@ func newLobby() *Lobby {
 func (g Game) String() string {
 	b, err := json.Marshal(g)
 	if err != nil {
-		fmt.Printf("[%s]:ERROR json.Marshal %v\n", time.Now(), err)
+		log.Printf("ERROR json.Marshal %v", err)
 		return ""
 	}
 	return string(b)
@@ -242,7 +242,7 @@ func (g Game) Export(player string) string {
 
 	b, err := json.Marshal(eg)
 	if err != nil {
-		fmt.Printf("[%s]:ERROR json.Marshal %v %v\n", time.Now(), g, err)
+		log.Printf("ERROR json.Marshal %v %v", g, err)
 		return ""
 	}
 	return string(b)
@@ -332,7 +332,7 @@ func checkGetParamExists(values url.Values, name string) bool {
 }
 
 func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("[%s]: Request received from %s, url: %s\n", time.Now(), r.RemoteAddr, r.URL)
+	log.Printf("Request received from %s, url: %s", r.RemoteAddr, r.URL)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	q := r.URL.Query()
 	// If no player is given - let them observe all.
@@ -358,7 +358,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if checkGetParamExists(q, "build_scv") {
-		fmt.Printf("[%s]: Player: %s is building a SCV\n", time.Now(), player)
+		log.Printf("Player: %s is building a SCV", player)
 		err = buildSCV(player, locID)
 		if err != nil {
 			fmt.Fprintf(w, "%s", httpError(err))
@@ -369,7 +369,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if checkGetParamExists(q, "scv_to_work") {
-		fmt.Printf("[%s]: Player: %s is sending SCV to work\n", time.Now(), player)
+		log.Printf("Player: %s is sending SCV to work", player)
 		err = statusSCV(player, locID, STATUS_IDLE, STATUS_MINING)
 		if err != nil {
 			fmt.Fprintf(w, "%s", httpError(err))
@@ -380,7 +380,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if checkGetParamExists(q, "idle_scv") {
-		fmt.Printf("[%s]: Player: %s is sending SCV to idle\n", time.Now(), player)
+		log.Printf("Player: %s is sending SCV to idle", player)
 		err = statusSCV(player, locID, STATUS_MINING, STATUS_IDLE)
 		if err != nil {
 			fmt.Fprintf(w, "%s", httpError(err))
@@ -397,7 +397,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		fmt.Printf("[%s]: Player: %s is sending SCV [%d-->%d]\n", time.Now(), player, locID, destID)
+		log.Printf("Player: %s is sending SCV [%d-->%d]", player, locID, destID)
 		err = sendSCV(player, locID, destID)
 		if err != nil {
 			fmt.Fprintf(w, "%s", httpError(err))

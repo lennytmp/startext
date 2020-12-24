@@ -34,3 +34,20 @@ func TestAttackDecreasesHp(t *testing.T) {
 		t.Errorf("Command center was supposed to be damaged but has %d hp out of %d", cmd1.Hp, cmd1.HpMax)
 	}
 }
+
+func TestGameEnds(t *testing.T) {
+	l := basicLobbyGame()
+	g := l.running[TESTGAME]
+	g.Objects = append(g.Objects, SCV("0", 1))
+	g.Objects[1].Hp = 1
+	updLobby(l)
+	if g.status != GAME_STATUS_FINISHED {
+		t.Errorf("Expected the game to finish but it has status %s", g.status)
+	}
+	if g.Players["0"].Outcome != VICTORY {
+		t.Errorf("Expected player0 to be victorious, but got %q outcome", g.Players["0"].Outcome)
+	}
+	if g.Players["1"].Outcome != ELIMINATED {
+		t.Errorf("Expected player0 to be eliminated, but got %q outcome", g.Players["1"].Outcome)
+	}
+}
