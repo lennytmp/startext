@@ -16,6 +16,11 @@ import (
 const (
 	GAME_UNIT_SCV                = 1
 	GAME_BUILDING_COMMAND_CENTER = 2
+	ELIMINATED                   = "Eliminated"
+	VICTORY                      = "Victory"
+	GAME_STATUS_FINISHED         = "Finished"
+	GAME_STATUS_RUNNING          = "Running"
+	GAME_STATUS_NEW              = "Finished"
 
 	TASK_TYPE_BUILD_SCV = 1
 
@@ -29,24 +34,27 @@ const (
 var lobby *Lobby
 
 func main() {
-    lobby = newLobby()
-    lobby.running["test"] = newGame()
+	lobby = newLobby()
+	lobby.running["test"] = newGame()
 	go func() {
 		for {
-            for n,g := range lobby.running {
-                now := time.Now()
-                passed := now.Sub(g.lastSim)
-                if passed < 3*time.Second {
-                    continue
-                }
-                if passed > 4*time.Second {
-                    fmt.Printf("[%s]: WARNING: %s game is more than %d seconds late\n", now, n, passed)
-                }
-                start := time.Now()
-                gameSim(g)
-                elapsed := time.Now().Sub(start)
-                time.Sleep(3*time.Second - elapsed)
-            }
+			for n, g := range lobby.running {
+				if g.status != GAME_STATUS_RUNNING {
+					continue
+				}
+				now := time.Now()
+				passed := now.Sub(g.lastSim)
+				if passed < 3*time.Second {
+					continue
+				}
+				if passed > 4*time.Second {
+					fmt.Printf("[%s]: WARNING: %s game is more than %d seconds late\n", now, n, passed)
+				}
+				start := time.Now()
+				gameSim(g)
+				elapsed := time.Now().Sub(start)
+				time.Sleep(3*time.Second - elapsed)
+			}
 		}
 	}()
 	http.Handle("/", new(countHandler))
@@ -91,14 +99,31 @@ func gameSim(g *Game) {
 		}
 	}
 	var nos []GameObject
+	buildingsPerPlayer := make(map[string]bool)
 	for k, v := range g.Objects {
 		if !killedIDs[k] {
 			nos = append(nos, v)
+			if v.Type == GAME_BUILDING_COMMAND_CENTER {
+				buildingsPerPlayer[v.Owner] = true
+			}
 		}
 	}
 	g.Objects = nos
 	g.objectsMu.Unlock()
-    g.lastSim = time.Now()
+	g.lastSim = time.Now()
+	for k := range g.Players {
+		_, ok := buildingsPerPlayer[k]
+		if !ok {
+			g.Players[k].mu.Lock()
+			g.Players[k].Outcome = ELIMINATED
+			g.Players[k].mu.Unlock()
+		} else if len(buildingsPerPlayer) == 1 {
+			g.status = GAME_STATUS_FINISHED
+			g.Players[k].mu.Lock()
+			g.Players[k].Outcome = VICTORY
+			g.Players[k].mu.Unlock()
+		}
+	}
 }
 
 // Kudos to https://stackoverflow.com/questions/37334119/how-to-delete-an-element-from-a-slice-in-golang
@@ -109,10 +134,11 @@ func remove(s []GameObject, i int) []GameObject {
 
 func initGame(g *Game) {
 	g.Players = make(map[string]*Player)
+	g.status = GAME_STATUS_RUNNING
 	players := []string{"0", "1"}
 	for k, pl := range players {
 		g.Locations = append(g.Locations, Location{})
-		g.Players[pl] = &Player{50, sync.Mutex{}}
+		g.Players[pl] = &Player{50, "", sync.Mutex{}}
 		for j := 0; j < 5; j++ {
 			g.Objects = append(g.Objects, SCV(pl, k))
 		}
@@ -153,6 +179,7 @@ type Location struct{}
 
 type Player struct {
 	Minerals int
+	Outcome  string
 	mu       sync.Mutex
 }
 
@@ -161,26 +188,27 @@ type Game struct {
 	Locations []Location
 	Objects   []GameObject
 	objectsMu sync.Mutex
-    lastSim   time.Time
+	lastSim   time.Time
+	status    string
 }
 
 func newGame() *Game {
 	g := &Game{}
 	g.Players = make(map[string]*Player)
-    g.lastSim = time.Now()
+	g.lastSim = time.Now()
 	return g
 }
 
 type Lobby struct {
-    running map[string]*Game
-    waiting map[string]*Game
+	running map[string]*Game
+	waiting map[string]*Game
 }
 
 func newLobby() *Lobby {
-    l := &Lobby{}
-    l.running = make(map[string]*Game)
-    l.waiting = make(map[string]*Game)
-    return l
+	l := &Lobby{}
+	l.running = make(map[string]*Game)
+	l.waiting = make(map[string]*Game)
+	return l
 }
 
 func (g Game) String() string {
@@ -381,7 +409,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func sendSCV(player string, locID int, destID int) error {
-    testGame := lobby.running["test"]
+	testGame := lobby.running["test"]
 	testGame.objectsMu.Lock()
 	defer testGame.objectsMu.Unlock()
 	for i, gob := range testGame.Objects {
@@ -394,7 +422,7 @@ func sendSCV(player string, locID int, destID int) error {
 }
 
 func statusSCV(player string, locID int, status_from int, status_to int) error {
-    testGame := lobby.running["test"]
+	testGame := lobby.running["test"]
 	testGame.objectsMu.Lock()
 	defer testGame.objectsMu.Unlock()
 	for i, gob := range testGame.Objects {
@@ -410,7 +438,7 @@ func statusSCV(player string, locID int, status_from int, status_to int) error {
 }
 
 func buildSCV(player string, locID int) error {
-    testGame := lobby.running["test"]
+	testGame := lobby.running["test"]
 	testGame.objectsMu.Lock()
 	defer testGame.objectsMu.Unlock()
 
