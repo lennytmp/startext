@@ -36,29 +36,32 @@ var lobby *Lobby
 func main() {
 	lobby = newLobby()
 	lobby.running["test"] = newGame()
-	go func() {
-		for {
-			for n, g := range lobby.running {
-				if g.status != GAME_STATUS_RUNNING {
-					continue
-				}
-				now := time.Now()
-				passed := now.Sub(g.lastSim)
-				if passed < 3*time.Second {
-					continue
-				}
-				if passed > 4*time.Second {
-					fmt.Printf("[%s]: WARNING: %s game is more than %d seconds late\n", now, n, passed)
-				}
-				start := time.Now()
-				gameSim(g)
-				elapsed := time.Now().Sub(start)
-				time.Sleep(3*time.Second - elapsed)
-			}
-		}
-	}()
+	lobby.running["test"].status = GAME_STATUS_RUNNING
+	go updLobby(lobby)
 	http.Handle("/", new(countHandler))
 	log.Fatal(http.ListenAndServe(":8182", nil))
+}
+
+func updLobby(l *Lobby) {
+	for {
+		for n, g := range lobby.running {
+			if g.status != GAME_STATUS_RUNNING {
+				continue
+			}
+			now := time.Now()
+			passed := now.Sub(g.lastSim)
+			if passed < 3*time.Second {
+				continue
+			}
+			if passed > 4*time.Second {
+				fmt.Printf("[%s]: WARNING: %s game is more than %d seconds late\n", now, n, passed)
+			}
+			start := time.Now()
+			gameSim(g)
+			elapsed := time.Now().Sub(start)
+			time.Sleep(3*time.Second - elapsed)
+		}
+	}
 }
 
 func gameSim(g *Game) {
@@ -214,7 +217,7 @@ func newLobby() *Lobby {
 func (g Game) String() string {
 	b, err := json.Marshal(g)
 	if err != nil {
-		fmt.Printf("[%s]:ERROR json.Marshal %v %v\n", time.Now(), g, err)
+		fmt.Printf("[%s]:ERROR json.Marshal %v\n", time.Now(), err)
 		return ""
 	}
 	return string(b)
@@ -418,7 +421,7 @@ func sendSCV(player string, locID int, destID int) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("Couldn't find any IDLE SCVs at location %d for player %d", locID, player)
+	return fmt.Errorf("Couldn't find any IDLE SCVs at location %d for player %s", locID, player)
 }
 
 func statusSCV(player string, locID int, status_from int, status_to int) error {
