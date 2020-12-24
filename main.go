@@ -37,30 +37,29 @@ func main() {
 	lobby = newLobby()
 	lobby.running["test"] = newGame()
 	lobby.running["test"].status = GAME_STATUS_RUNNING
-	go updLobby(lobby)
+	go func() {
+		for {
+			updLobby(lobby)
+		}
+	}()
 	http.Handle("/", new(countHandler))
 	log.Fatal(http.ListenAndServe(":8182", nil))
 }
 
 func updLobby(l *Lobby) {
-	for {
-		for n, g := range lobby.running {
-			if g.status != GAME_STATUS_RUNNING {
-				continue
-			}
-			now := time.Now()
-			passed := now.Sub(g.lastSim)
-			if passed < 3*time.Second {
-				continue
-			}
-			if passed > 4*time.Second {
-				fmt.Printf("[%s]: WARNING: %s game is more than %d seconds late\n", now, n, passed)
-			}
-			start := time.Now()
-			gameSim(g)
-			elapsed := time.Now().Sub(start)
-			time.Sleep(3*time.Second - elapsed)
+	for n, g := range l.running {
+		if g.status != GAME_STATUS_RUNNING {
+			continue
 		}
+		now := time.Now()
+		passed := now.Sub(g.lastSim)
+		if passed < 3*time.Second {
+			continue
+		}
+		if passed > 4*time.Second {
+			fmt.Printf("[%s]: WARNING: %s game is more than %d seconds late\n", now, n, passed)
+		}
+		gameSim(g)
 	}
 }
 
