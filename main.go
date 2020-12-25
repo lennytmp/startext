@@ -35,8 +35,8 @@ var lobby *Lobby
 
 func main() {
 	lobby = newLobby()
-	lobby.running["test"] = newGame()
-	lobby.running["test"].status = GAME_STATUS_RUNNING
+	lobby.games["test"] = newGame()
+	lobby.games["test"].status = GAME_STATUS_RUNNING
 	go func() {
 		for {
 			updLobby(lobby)
@@ -47,7 +47,7 @@ func main() {
 }
 
 func updLobby(l *Lobby) {
-	for n, g := range l.running {
+	for n, g := range l.games {
 		if g.status != GAME_STATUS_RUNNING {
 			continue
 		}
@@ -202,14 +202,12 @@ func newGame() *Game {
 }
 
 type Lobby struct {
-	running map[string]*Game
-	waiting map[string]*Game
+	games map[string]*Game
 }
 
 func newLobby() *Lobby {
 	l := &Lobby{}
-	l.running = make(map[string]*Game)
-	l.waiting = make(map[string]*Game)
+	l.games = make(map[string]*Game)
 	return l
 }
 
@@ -304,23 +302,12 @@ func getGetStrParam(values url.Values, name string) (string, error) {
 	}
 }
 
-func getPlayerName(values url.Values) (string, error) {
-	player, err := getGetStrParam(values, "player")
-	if err != nil {
-		return player, err
-	}
-	if _, ok := lobby.running["test"].Players[player]; !ok {
-		return player, fmt.Errorf("No such player %s", player)
-	}
-	return player, nil
-}
-
-func getLocationID(values url.Values, name string) (int, error) {
+func getLocationID(g *Game, values url.Values, name string) (int, error) {
 	locID, err := getGetIntParam(values, name)
 	if err != nil {
 		return locID, err
 	}
-	if locID >= len(lobby.running["test"].Locations) {
+	if locID >= len(g.Locations) {
 		return locID, fmt.Errorf("No such location %d", locID)
 	}
 	return locID, nil
@@ -331,27 +318,37 @@ func checkGetParamExists(values url.Values, name string) bool {
 	return ok
 }
 
+func getPlayerGame(l *Lobby, player string) *Game {
+	for _, g := range l.games {
+		if _, ok := g.Players[player]; ok {
+			return g
+		}
+	}
+	return nil
+}
+
 func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Request received from %s, url: %s", r.RemoteAddr, r.URL)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	q := r.URL.Query()
-	// If no player is given - let them observe all.
-	if !checkGetParamExists(q, "player") {
-		fmt.Fprintf(w, "%s", lobby.running["test"].String())
-		return
-	}
 
-	player, err := getPlayerName(q)
+	player, err := getGetStrParam(q, "player")
 	if err != nil {
 		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
-	if !checkGetParamExists(q, "location_id") {
-		fmt.Fprintf(w, "%s", lobby.running["test"].Export(player))
+
+	g := getPlayerGame(lobby, player)
+	if g == nil {
+		//Write all pending games
+		return
+	}
+	if g.status == GAME_STATUS_FINISHED || !checkGetParamExists(q, "location_id") {
+		fmt.Fprintf(w, "%s", g.Export(player))
 		return
 	}
 
-	locID, err := getLocationID(q, "location_id")
+	locID, err := getLocationID(g, q, "location_id")
 	if err != nil {
 		fmt.Fprintf(w, "%s", httpError(err))
 		return
@@ -359,7 +356,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if checkGetParamExists(q, "build_scv") {
 		log.Printf("Player: %s is building a SCV", player)
-		err = buildSCV(player, locID)
+		err = buildSCV(g, player, locID)
 		if err != nil {
 			fmt.Fprintf(w, "%s", httpError(err))
 			return
@@ -370,7 +367,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if checkGetParamExists(q, "scv_to_work") {
 		log.Printf("Player: %s is sending SCV to work", player)
-		err = statusSCV(player, locID, STATUS_IDLE, STATUS_MINING)
+		err = statusSCV(g, player, locID, STATUS_IDLE, STATUS_MINING)
 		if err != nil {
 			fmt.Fprintf(w, "%s", httpError(err))
 			return
@@ -381,7 +378,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if checkGetParamExists(q, "idle_scv") {
 		log.Printf("Player: %s is sending SCV to idle", player)
-		err = statusSCV(player, locID, STATUS_MINING, STATUS_IDLE)
+		err = statusSCV(g, player, locID, STATUS_MINING, STATUS_IDLE)
 		if err != nil {
 			fmt.Fprintf(w, "%s", httpError(err))
 			return
@@ -391,14 +388,14 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if checkGetParamExists(q, "destination_id") {
-		destID, err := getLocationID(q, "destination_id")
+		destID, err := getLocationID(g, q, "destination_id")
 		if err != nil {
 			fmt.Fprintf(w, "%s", httpError(err))
 			return
 		}
 
 		log.Printf("Player: %s is sending SCV [%d-->%d]", player, locID, destID)
-		err = sendSCV(player, locID, destID)
+		err = sendSCV(g, player, locID, destID)
 		if err != nil {
 			fmt.Fprintf(w, "%s", httpError(err))
 			return
@@ -410,26 +407,24 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s", `{"error":{"message":"Not supported action"}}`)
 }
 
-func sendSCV(player string, locID int, destID int) error {
-	testGame := lobby.running["test"]
-	testGame.objectsMu.Lock()
-	defer testGame.objectsMu.Unlock()
-	for i, gob := range testGame.Objects {
+func sendSCV(g *Game, player string, locID int, destID int) error {
+	g.objectsMu.Lock()
+	defer g.objectsMu.Unlock()
+	for i, gob := range g.Objects {
 		if gob.Type == GAME_UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Status == STATUS_IDLE {
-			testGame.Objects[i].Location = destID
+			g.Objects[i].Location = destID
 			return nil
 		}
 	}
 	return fmt.Errorf("Couldn't find any IDLE SCVs at location %d for player %s", locID, player)
 }
 
-func statusSCV(player string, locID int, status_from int, status_to int) error {
-	testGame := lobby.running["test"]
-	testGame.objectsMu.Lock()
-	defer testGame.objectsMu.Unlock()
-	for i, gob := range testGame.Objects {
+func statusSCV(g *Game, player string, locID int, status_from int, status_to int) error {
+	g.objectsMu.Lock()
+	defer g.objectsMu.Unlock()
+	for i, gob := range g.Objects {
 		if gob.Type == GAME_UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Status == status_from {
-			testGame.Objects[i].Status = status_to
+			g.Objects[i].Status = status_to
 			return nil
 		}
 	}
@@ -439,14 +434,13 @@ func statusSCV(player string, locID int, status_from int, status_to int) error {
 	return fmt.Errorf("Couldn't find any IDLE SCVs at location %d for player %s", locID, player)
 }
 
-func buildSCV(player string, locID int) error {
-	testGame := lobby.running["test"]
-	testGame.objectsMu.Lock()
-	defer testGame.objectsMu.Unlock()
+func buildSCV(g *Game, player string, locID int) error {
+	g.objectsMu.Lock()
+	defer g.objectsMu.Unlock()
 
 	ccFound := false
 	var ccID int
-	for i, gob := range testGame.Objects {
+	for i, gob := range g.Objects {
 		if gob.Type == GAME_BUILDING_COMMAND_CENTER && gob.Location == locID && gob.Owner == player {
 			ccFound = true
 			ccID = i
@@ -455,17 +449,17 @@ func buildSCV(player string, locID int) error {
 	if !ccFound {
 		return fmt.Errorf("No command center at location %d", locID)
 	}
-	if (Task{}) != testGame.Objects[ccID].Building.Task {
+	if g.Objects[ccID].Building.Task != (Task{}) {
 		return fmt.Errorf("The command center is busy, sorry")
 	}
-	pl := testGame.Players[player]
+	pl := g.Players[player]
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 	if pl.Minerals < COST_SCV_MINERALS {
 		return fmt.Errorf("Not enogh minerals, need %d, have %d", COST_SCV_MINERALS, pl.Minerals)
 	}
 	pl.Minerals -= COST_SCV_MINERALS
-	testGame.Objects[ccID].Building.Task = Task{Type: TASK_TYPE_BUILD_SCV}
+	g.Objects[ccID].Building.Task = Task{Type: TASK_TYPE_BUILD_SCV}
 	return nil
 }
 

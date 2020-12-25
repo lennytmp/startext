@@ -14,7 +14,7 @@ func basicLobbyGame() *Lobby {
 	lobby := newLobby()
 	g := newGame()
 	g.lastSim = time.Now().Add(-3500 * time.Millisecond)
-	lobby.running[TESTGAME] = g
+	lobby.games[TESTGAME] = g
 	g.status = GAME_STATUS_RUNNING
 	g.Players["0"] = &Player{50, "", sync.Mutex{}}
 	g.Players["1"] = &Player{50, "", sync.Mutex{}}
@@ -26,7 +26,7 @@ func basicLobbyGame() *Lobby {
 
 func TestAttackDecreasesHp(t *testing.T) {
 	l := basicLobbyGame()
-	g := l.running[TESTGAME]
+	g := l.games[TESTGAME]
 	g.Objects = append(g.Objects, SCV("0", 1))
 	updLobby(l)
 	cmd1 := g.Objects[1]
@@ -37,7 +37,7 @@ func TestAttackDecreasesHp(t *testing.T) {
 
 func TestGameEnds(t *testing.T) {
 	l := basicLobbyGame()
-	g := l.running[TESTGAME]
+	g := l.games[TESTGAME]
 	g.Objects = append(g.Objects, SCV("0", 1))
 	g.Objects[1].Hp = 1
 	updLobby(l)
