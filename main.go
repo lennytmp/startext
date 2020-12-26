@@ -129,12 +129,6 @@ func gameSim(g *Game) {
 	}
 }
 
-// Kudos to https://stackoverflow.com/questions/37334119/how-to-delete-an-element-from-a-slice-in-golang
-func remove(s []GameObject, i int) []GameObject {
-	s[len(s)-1], s[i] = s[i], s[len(s)-1]
-	return s[:len(s)-1]
-}
-
 func initGame(g *Game) {
 	g.Players = make(map[string]*Player)
 	g.status = GAME_STATUS_RUNNING
