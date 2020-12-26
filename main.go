@@ -40,7 +40,9 @@ func main() {
 	lobby.games["test_pending"] = newGame("test_pending")
 	go func() {
 		for {
+			lobby.mu.Lock()
 			updLobby(lobby)
+			lobby.mu.Unlock()
 		}
 	}()
 	http.Handle("/", new(countHandler))
@@ -49,18 +51,23 @@ func main() {
 
 func updLobby(l *Lobby) {
 	for n, g := range l.games {
-		if g.status != GAME_STATUS_RUNNING {
-			continue
-		}
-		now := time.Now()
-		passed := now.Sub(g.lastSim)
-		if passed < 3*time.Second {
-			continue
-		}
-		if passed > 4*time.Second {
-			log.Printf("WARNING: %s game is more than %f seconds late", n, passed.Seconds())
-		}
-		gameSim(g)
+		func() {
+			g.mu.Lock()
+			defer g.mu.Unlock()
+
+			if g.status != GAME_STATUS_RUNNING {
+				return
+			}
+			now := time.Now()
+			passed := now.Sub(g.lastSim)
+			if passed < 3*time.Second {
+				return
+			}
+			if passed > 4*time.Second {
+				log.Printf("WARNING: %s game is more than %f seconds late", n, passed.Seconds())
+			}
+			gameSim(g)
+		}()
 	}
 }
 
@@ -68,13 +75,10 @@ func gameSim(g *Game) {
 	if len(g.Players) == 0 {
 		initGame(g)
 	}
-	g.objectsMu.Lock()
 	killedIDs := make(map[int]bool)
 	for i, gob := range g.Objects {
 		if gob.Status == STATUS_MINING {
-			g.Players[gob.Owner].mu.Lock()
 			g.Players[gob.Owner].Minerals += gob.yps
-			g.Players[gob.Owner].mu.Unlock()
 		}
 		if gob.Type == GAME_UNIT_SCV && gob.Status == STATUS_IDLE {
 			var targetIDs []int
@@ -112,19 +116,14 @@ func gameSim(g *Game) {
 		}
 	}
 	g.Objects = nos
-	g.objectsMu.Unlock()
 	g.lastSim = time.Now()
 	for k := range g.Players {
 		_, ok := buildingsPerPlayer[k]
 		if !ok {
-			g.Players[k].mu.Lock()
 			g.Players[k].Outcome = ELIMINATED
-			g.Players[k].mu.Unlock()
 		} else if len(buildingsPerPlayer) == 1 {
 			g.status = GAME_STATUS_FINISHED
-			g.Players[k].mu.Lock()
 			g.Players[k].Outcome = VICTORY
-			g.Players[k].mu.Unlock()
 		}
 	}
 }
@@ -135,7 +134,7 @@ func initGame(g *Game) {
 	players := []string{"0", "1"}
 	for k, pl := range players {
 		g.Locations = append(g.Locations, Location{})
-		g.Players[pl] = &Player{50, "", sync.Mutex{}}
+		g.Players[pl] = &Player{50, ""}
 		for j := 0; j < 5; j++ {
 			g.Objects = append(g.Objects, SCV(pl, k))
 		}
@@ -177,18 +176,16 @@ type Location struct{}
 type Player struct {
 	Minerals int
 	Outcome  string
-	mu       sync.Mutex
 }
 
 type Game struct {
 	Players   map[string]*Player
-	playersMu sync.Mutex
 	Locations []Location
 	Objects   []GameObject
-	objectsMu sync.Mutex
 	lastSim   time.Time
 	status    string
 	name      string
+	mu        sync.Mutex
 }
 
 func newGame(gameName string) *Game {
@@ -201,8 +198,8 @@ func newGame(gameName string) *Game {
 }
 
 type Lobby struct {
-	games   map[string]*Game
-	gamesMu sync.Mutex
+	games map[string]*Game
+	mu    sync.Mutex
 }
 
 func newLobby() *Lobby {
@@ -274,7 +271,6 @@ type GameObject struct {
 type Building struct {
 	Task      Task
 	taskSpeed int
-	Queue     []int // An array of task types
 }
 
 type Task struct {
@@ -345,30 +341,21 @@ func getPlayerGame(l *Lobby, player string) *Game {
 func joinGame(l *Lobby, player string, gameName string) error {
 	g, ok := l.games[gameName]
 	if !ok {
-		l.gamesMu.Lock()
 		l.games[gameName] = newGame(gameName)
-		l.gamesMu.Unlock()
 	}
-	g.playersMu.Lock()
 	g.Players[player] = &Player{}
-	g.playersMu.Unlock()
 	return nil
 }
 
 func quitGame(l *Lobby, g *Game, player string) {
 	if len(g.Players) == 1 {
-		l.gamesMu.Lock()
 		delete(l.games, g.name)
-		l.gamesMu.Unlock()
 		return
 	}
 	if g.status == GAME_STATUS_PENDING {
-		g.playersMu.Lock()
 		delete(g.Players, player)
-		g.playersMu.Unlock()
 		return
 	}
-	g.objectsMu.Lock()
 	nos := []GameObject{}
 	for _, o := range g.Objects {
 		if o.Owner != player {
@@ -376,10 +363,7 @@ func quitGame(l *Lobby, g *Game, player string) {
 		}
 	}
 	g.Objects = nos
-	g.objectsMu.Unlock()
-	g.playersMu.Lock()
 	delete(g.Players, player)
-	g.playersMu.Unlock()
 }
 
 func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -391,6 +375,9 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
+
+	lobby.mu.Lock()
+	defer lobby.mu.Unlock()
 
 	g := getPlayerGame(lobby, player)
 	if g == nil {
@@ -406,6 +393,9 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	if checkGetParamExists(q, "quit") {
 		quitGame(lobby, g, player)
@@ -462,8 +452,6 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func sendSCV(g *Game, player string, locID int, destID int) error {
-	g.objectsMu.Lock()
-	defer g.objectsMu.Unlock()
 	for i, gob := range g.Objects {
 		if gob.Type == GAME_UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Status == STATUS_IDLE {
 			g.Objects[i].Location = destID
@@ -474,8 +462,6 @@ func sendSCV(g *Game, player string, locID int, destID int) error {
 }
 
 func statusSCV(g *Game, player string, locID int, status_from int, status_to int) error {
-	g.objectsMu.Lock()
-	defer g.objectsMu.Unlock()
 	for i, gob := range g.Objects {
 		if gob.Type == GAME_UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Status == status_from {
 			g.Objects[i].Status = status_to
@@ -489,9 +475,6 @@ func statusSCV(g *Game, player string, locID int, status_from int, status_to int
 }
 
 func buildSCV(g *Game, player string, locID int) error {
-	g.objectsMu.Lock()
-	defer g.objectsMu.Unlock()
-
 	ccFound := false
 	var ccID int
 	for i, gob := range g.Objects {
@@ -507,8 +490,6 @@ func buildSCV(g *Game, player string, locID int) error {
 		return fmt.Errorf("The command center is busy, sorry")
 	}
 	pl := g.Players[player]
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
 	if pl.Minerals < COST_SCV_MINERALS {
 		return fmt.Errorf("Not enogh minerals, need %d, have %d", COST_SCV_MINERALS, pl.Minerals)
 	}
