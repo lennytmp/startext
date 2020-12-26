@@ -199,6 +199,7 @@ type Game struct {
 func newGame() *Game {
 	g := &Game{}
 	g.Players = make(map[string]*Player)
+	g.status = GAME_STATUS_PENDING
 	g.lastSim = time.Now()
 	return g
 }
@@ -344,11 +345,18 @@ func getPlayerGame(l *Lobby, player string) *Game {
 	return nil
 }
 
+func joinGame(l *Lobby, player string, gameName string) error {
+	if _, ok := l.games[gameName]; !ok {
+		l.games[gameName] = newGame()
+	}
+	l.games[gameName].Players[player] = &Player{}
+	return nil
+}
+
 func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Request received from %s, url: %s", r.RemoteAddr, r.URL)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	q := r.URL.Query()
-
 	player, err := getGetStrParam(q, "player")
 	if err != nil {
 		fmt.Fprintf(w, "%s", httpError(err))
@@ -357,7 +365,16 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	g := getPlayerGame(lobby, player)
 	if g == nil {
-		fmt.Fprintf(w, "%s", exportPendingGames(lobby))
+		if !checkGetParamExists(q, "game") {
+			fmt.Fprintf(w, "%s", exportPendingGames(lobby))
+			return
+		}
+		gameName, err := getGetStrParam(q, "game")
+		if err != nil {
+			fmt.Fprintf(w, "%s", httpError(err))
+		}
+		err = joinGame(lobby, player, gameName)
+		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
 	if g.status == GAME_STATUS_FINISHED || !checkGetParamExists(q, "location_id") {
@@ -374,33 +391,21 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if checkGetParamExists(q, "build_scv") {
 		log.Printf("Player: %s is building a SCV", player)
 		err = buildSCV(g, player, locID)
-		if err != nil {
-			fmt.Fprintf(w, "%s", httpError(err))
-			return
-		}
-		fmt.Fprintf(w, "%s", `{"status":"ok"}`)
+		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
 
 	if checkGetParamExists(q, "scv_to_work") {
 		log.Printf("Player: %s is sending SCV to work", player)
 		err = statusSCV(g, player, locID, STATUS_IDLE, STATUS_MINING)
-		if err != nil {
-			fmt.Fprintf(w, "%s", httpError(err))
-			return
-		}
-		fmt.Fprintf(w, "%s", `{"status":"ok"}`)
+		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
 
 	if checkGetParamExists(q, "idle_scv") {
 		log.Printf("Player: %s is sending SCV to idle", player)
 		err = statusSCV(g, player, locID, STATUS_MINING, STATUS_IDLE)
-		if err != nil {
-			fmt.Fprintf(w, "%s", httpError(err))
-			return
-		}
-		fmt.Fprintf(w, "%s", `{"status":"ok"}`)
+		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
 
@@ -413,11 +418,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		log.Printf("Player: %s is sending SCV [%d-->%d]", player, locID, destID)
 		err = sendSCV(g, player, locID, destID)
-		if err != nil {
-			fmt.Fprintf(w, "%s", httpError(err))
-			return
-		}
-		fmt.Fprintf(w, "%s", `{"status":"ok"}`)
+		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
 
@@ -481,5 +482,8 @@ func buildSCV(g *Game, player string, locID int) error {
 }
 
 func httpError(err error) string {
+	if err == nil {
+		return fmt.Sprintf(`{"status":"ok"}`)
+	}
 	return fmt.Sprintf(`{"error":{"message":"%s"}}`, strings.Replace(err.Error(), `"`, `\"`, -1))
 }
