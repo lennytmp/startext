@@ -232,7 +232,19 @@ func exportPendingGames(l *Lobby) string {
 	return string(b)
 }
 
+func (g Game) exportAll() string {
+	b, err := json.Marshal(g)
+	if err != nil {
+		log.Printf("ERROR json.Marshal for the game %v %v", g, err)
+		return ""
+	}
+	return string(b)
+}
+
 func (g Game) Export(player string) string {
+	if g.status != GAME_STATUS_RUNNING {
+		return g.exportAll()
+	}
 	eg := newGame(g.name)
 	eg.Players[player] = g.Players[player]
 	for _, v := range g.Locations {
@@ -249,13 +261,7 @@ func (g Game) Export(player string) string {
 			eg.Objects = append(eg.Objects, v)
 		}
 	}
-
-	b, err := json.Marshal(eg)
-	if err != nil {
-		log.Printf("ERROR json.Marshal for the game %v %v", g, err)
-		return ""
-	}
-	return string(b)
+	return eg.exportAll()
 }
 
 type GameObject struct {
