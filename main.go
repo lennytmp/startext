@@ -35,10 +35,9 @@ var lobby *Lobby
 
 func main() {
 	lobby = newLobby()
-	lobby.games["test"] = newGame()
+	lobby.games["test"] = newGame("test")
 	lobby.games["test"].status = GAME_STATUS_RUNNING
-	lobby.games["test_pending"] = newGame()
-	lobby.games["test_pending"].status = GAME_STATUS_PENDING
+	lobby.games["test_pending"] = newGame("test_pending")
 	go func() {
 		for {
 			updLobby(lobby)
@@ -189,23 +188,27 @@ type Player struct {
 
 type Game struct {
 	Players   map[string]*Player
+	playersMu sync.Mutex
 	Locations []Location
 	Objects   []GameObject
 	objectsMu sync.Mutex
 	lastSim   time.Time
 	status    string
+	name      string
 }
 
-func newGame() *Game {
+func newGame(gameName string) *Game {
 	g := &Game{}
 	g.Players = make(map[string]*Player)
 	g.status = GAME_STATUS_PENDING
 	g.lastSim = time.Now()
+	g.name = gameName
 	return g
 }
 
 type Lobby struct {
-	games map[string]*Game
+	games   map[string]*Game
+	gamesMu sync.Mutex
 }
 
 func newLobby() *Lobby {
@@ -239,7 +242,7 @@ func exportPendingGames(l *Lobby) string {
 }
 
 func (g Game) Export(player string) string {
-	eg := newGame()
+	eg := newGame(g.name)
 	eg.Players[player] = g.Players[player]
 	for _, v := range g.Locations {
 		eg.Locations = append(eg.Locations, v)
@@ -346,11 +349,43 @@ func getPlayerGame(l *Lobby, player string) *Game {
 }
 
 func joinGame(l *Lobby, player string, gameName string) error {
-	if _, ok := l.games[gameName]; !ok {
-		l.games[gameName] = newGame()
+	g, ok := l.games[gameName]
+	if !ok {
+		l.gamesMu.Lock()
+		l.games[gameName] = newGame(gameName)
+		l.gamesMu.Unlock()
 	}
-	l.games[gameName].Players[player] = &Player{}
+	g.playersMu.Lock()
+	g.Players[player] = &Player{}
+	g.playersMu.Unlock()
 	return nil
+}
+
+func quitGame(l *Lobby, g *Game, player string) {
+	if len(g.Players) == 1 {
+		l.gamesMu.Lock()
+		delete(l.games, g.name)
+		l.gamesMu.Unlock()
+		return
+	}
+	if g.status == GAME_STATUS_PENDING {
+		g.playersMu.Lock()
+		delete(g.Players, player)
+		g.playersMu.Unlock()
+		return
+	}
+	g.objectsMu.Lock()
+	nos := []GameObject{}
+	for _, o := range g.Objects {
+		if o.Owner != player {
+			nos = append(nos, o)
+		}
+	}
+	g.Objects = nos
+	g.objectsMu.Unlock()
+	g.playersMu.Lock()
+	delete(g.Players, player)
+	g.playersMu.Unlock()
 }
 
 func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -377,6 +412,13 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s", httpError(err))
 		return
 	}
+
+	if checkGetParamExists(q, "quit") {
+		quitGame(lobby, g, player)
+		fmt.Fprintf(w, "%s", httpError(nil))
+		return
+	}
+
 	if g.status == GAME_STATUS_FINISHED || !checkGetParamExists(q, "location_id") {
 		fmt.Fprintf(w, "%s", g.Export(player))
 		return

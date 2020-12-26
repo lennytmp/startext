@@ -12,7 +12,7 @@ const (
 
 func basicLobbyGame() *Lobby {
 	lobby := newLobby()
-	g := newGame()
+	g := newGame("test")
 	g.lastSim = time.Now().Add(-3500 * time.Millisecond)
 	lobby.games[TESTGAME] = g
 	g.status = GAME_STATUS_RUNNING
