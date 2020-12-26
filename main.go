@@ -20,7 +20,7 @@ const (
 	VICTORY                      = "Victory"
 	GAME_STATUS_FINISHED         = "Finished"
 	GAME_STATUS_RUNNING          = "Running"
-	GAME_STATUS_NEW              = "Finished"
+	GAME_STATUS_PENDING          = "Pending"
 
 	TASK_TYPE_BUILD_SCV = 1
 
@@ -37,6 +37,8 @@ func main() {
 	lobby = newLobby()
 	lobby.games["test"] = newGame()
 	lobby.games["test"].status = GAME_STATUS_RUNNING
+	lobby.games["test_pending"] = newGame()
+	lobby.games["test_pending"].status = GAME_STATUS_PENDING
 	go func() {
 		for {
 			updLobby(lobby)
@@ -220,6 +222,21 @@ func (g Game) String() string {
 	return string(b)
 }
 
+func exportPendingGames(l *Lobby) string {
+	pending := make(map[string]*Game)
+	for gn, g := range l.games {
+		if g.status == GAME_STATUS_PENDING {
+			pending[gn] = g
+		}
+	}
+	b, err := json.Marshal(pending)
+	if err != nil {
+		log.Printf("ERROR json.Marshal for pending games %v %v", pending, err)
+		return ""
+	}
+	return string(b)
+}
+
 func (g Game) Export(player string) string {
 	eg := newGame()
 	eg.Players[player] = g.Players[player]
@@ -240,7 +257,7 @@ func (g Game) Export(player string) string {
 
 	b, err := json.Marshal(eg)
 	if err != nil {
-		log.Printf("ERROR json.Marshal %v %v", g, err)
+		log.Printf("ERROR json.Marshal for the game %v %v", g, err)
 		return ""
 	}
 	return string(b)
@@ -340,7 +357,7 @@ func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	g := getPlayerGame(lobby, player)
 	if g == nil {
-		//Write all pending games
+		fmt.Fprintf(w, "%s", exportPendingGames(lobby))
 		return
 	}
 	if g.status == GAME_STATUS_FINISHED || !checkGetParamExists(q, "location_id") {
