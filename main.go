@@ -45,7 +45,7 @@ func main() {
 			lobby.mu.Unlock()
 		}
 	}()
-	http.Handle("/", new(countHandler))
+	http.Handle("/", new(apiHandler))
 	log.Fatal(http.ListenAndServe(":8182", nil))
 }
 
@@ -291,7 +291,7 @@ type Unit struct {
 	yps    int
 }
 
-type countHandler struct{}
+type apiHandler struct{}
 
 func getGetIntParam(values url.Values, name string) (int, error) {
 	if v, ok := values[name]; ok {
@@ -372,7 +372,7 @@ func quitGame(l *Lobby, g *Game, player string) {
 	delete(g.Players, player)
 }
 
-func (h *countHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Request received from %s, url: %s", r.RemoteAddr, r.URL)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	q := r.URL.Query()
