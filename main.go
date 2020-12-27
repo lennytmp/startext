@@ -35,9 +35,6 @@ var lobby *Lobby
 
 func main() {
 	lobby = newLobby()
-	lobby.games["test"] = newGame("test")
-	lobby.games["test"].status = GAME_STATUS_RUNNING
-	lobby.games["test_pending"] = newGame("test_pending")
 	go func() {
 		for {
 			lobby.mu.Lock()
@@ -72,9 +69,6 @@ func updLobby(l *Lobby) {
 }
 
 func gameSim(g *Game) {
-	if len(g.Players) == 0 {
-		initGame(g)
-	}
 	killedIDs := make(map[int]bool)
 	for i, gob := range g.Objects {
 		if gob.Status == STATUS_MINING {
@@ -129,18 +123,18 @@ func gameSim(g *Game) {
 }
 
 func initGame(g *Game) {
-	g.Players = make(map[string]*Player)
 	g.status = GAME_STATUS_RUNNING
-	players := []string{"0", "1"}
-	for k, pl := range players {
+	l := 0
+	for n, pl := range g.Players {
 		g.Locations = append(g.Locations, Location{})
-		g.Players[pl] = &Player{50, ""}
+		pl.Minerals = 50
 		for j := 0; j < 5; j++ {
-			g.Objects = append(g.Objects, SCV(pl, k))
+			g.Objects = append(g.Objects, SCV(n, l))
 		}
-		g.Objects = append(g.Objects, CommandCenter(pl, k))
+		g.Objects = append(g.Objects, CommandCenter(n, l))
+		l++
 	}
-	log.Printf("Game started")
+	log.Printf("Game %s started", g.name)
 }
 
 func CommandCenter(owner string, location int) GameObject {
@@ -176,6 +170,7 @@ type Location struct{}
 type Player struct {
 	Minerals int
 	Outcome  string
+	Ready    bool
 }
 
 type Game struct {
@@ -348,6 +343,7 @@ func joinGame(l *Lobby, player string, gameName string) error {
 	g, ok := l.games[gameName]
 	if !ok {
 		l.games[gameName] = newGame(gameName)
+		g = l.games[gameName]
 	}
 	g.Players[player] = &Player{}
 	return nil
@@ -405,6 +401,23 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if checkGetParamExists(q, "quit") {
 		quitGame(lobby, g, player)
+		fmt.Fprintf(w, "%s", httpError(nil))
+		return
+	}
+
+	if g.status == GAME_STATUS_PENDING && checkGetParamExists(q, "ready") {
+		func() {
+			g.Players[player].Ready = true
+			if len(g.Players) == 1 {
+				return
+			}
+			for _, p := range g.Players {
+				if !p.Ready {
+					return
+				}
+			}
+			initGame(g)
+		}()
 		fmt.Fprintf(w, "%s", httpError(nil))
 		return
 	}

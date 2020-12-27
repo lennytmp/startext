@@ -6,6 +6,59 @@ import (
 	"testing"
 )
 
+func TestStartPending(t *testing.T) {
+	api := apiHandler{}
+	lobby = newLobby()
+	lobby.games["test"] = &Game{
+		Players: map[string]*Player{"0": &Player{}, "1": &Player{}},
+		status:  GAME_STATUS_PENDING,
+	}
+	{ // Player0 is ready
+		req, err := http.NewRequest("GET", "/?player=0&ready", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		api.ServeHTTP(rr, req)
+		if status := rr.Code; status != http.StatusOK {
+			t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
+		}
+		wantResp := `{"status":"ok"}`
+		if rr.Body.String() != wantResp {
+			t.Errorf("got %v want %v", rr.Body.String(), wantResp)
+		}
+	}
+
+	{
+		req, err := http.NewRequest("GET", "/?player=1&ready", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		api.ServeHTTP(rr, req)
+		if status := rr.Code; status != http.StatusOK {
+			t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
+		}
+		wantResp := `{"status":"ok"}`
+		if rr.Body.String() != wantResp {
+			t.Errorf("got %v want %v", rr.Body.String(), wantResp)
+		}
+	}
+
+	g := lobby.games["test"]
+	if g.status != GAME_STATUS_RUNNING {
+		t.Errorf("wanted status running, got %s", g.status)
+	}
+	for n, p := range g.Players {
+		if p.Minerals != 50 {
+			t.Errorf("expected 50 minerals for player %s, got %d", n, p.Minerals)
+		}
+		if p.Outcome != "" {
+			t.Errorf("Game has just started, but there is already an outcome %s for player %s", p.Outcome, n)
+		}
+	}
+}
+
 func TestQuit(t *testing.T) {
 	api := apiHandler{}
 	req, err := http.NewRequest("GET", "/?player=0&quit", nil)
@@ -28,7 +81,7 @@ func TestQuit(t *testing.T) {
 				status: GAME_STATUS_PENDING,
 			},
 			wantResp: `{"status":"ok"}`,
-			wantGame: `{"Players":{"2":{"Minerals":0,"Outcome":""}},"Locations":null,"Objects":null}`,
+			wantGame: `{"Players":{"2":{"Minerals":0,"Outcome":"","Ready":false}},"Locations":null,"Objects":null}`,
 		},
 	}
 	for _, tc := range testCases {
@@ -70,7 +123,7 @@ func TestJustPlayer(t *testing.T) {
 			games: map[string]*Game{
 				"test": &Game{Players: map[string]*Player{"lenny": &Player{}}, status: GAME_STATUS_PENDING},
 			},
-			want: `{"test":{"Players":{"lenny":{"Minerals":0,"Outcome":""}},"Locations":null,"Objects":null}}`,
+			want: `{"test":{"Players":{"lenny":{"Minerals":0,"Outcome":"","Ready":false}},"Locations":null,"Objects":null}}`,
 		},
 		{
 			name: "1 running games with other players",
@@ -97,7 +150,7 @@ func TestJustPlayer(t *testing.T) {
 					status: GAME_STATUS_PENDING,
 				},
 			},
-			want: `{"Players":{"0":{"Minerals":0,"Outcome":""},"2":{"Minerals":0,"Outcome":""}},"Locations":null,"Objects":null}`,
+			want: `{"Players":{"0":{"Minerals":0,"Outcome":"","Ready":false},"2":{"Minerals":0,"Outcome":"","Ready":false}},"Locations":null,"Objects":null}`,
 		},
 		{
 			name: "1 my running game",
@@ -109,7 +162,7 @@ func TestJustPlayer(t *testing.T) {
 					},
 					status: GAME_STATUS_RUNNING},
 			},
-			want: `{"Players":{"0":{"Minerals":0,"Outcome":""}},"Locations":null,"Objects":null}`,
+			want: `{"Players":{"0":{"Minerals":0,"Outcome":"","Ready":false}},"Locations":null,"Objects":null}`,
 		},
 	}
 	for _, tc := range testCases {
