@@ -16,7 +16,12 @@ var lobby *Lobby
 
 func main() {
 	lobby = newLobby()
-	botTriggerQueue = make(chan triggerRequest)
+	botTriggerQueue = make(chan triggerRequest, 50)
+	go func() {
+		for {
+			processBotQueue()
+		}
+	}()
 	go func() {
 		for {
 			lobby.mu.Lock()
@@ -163,9 +168,6 @@ func getPlayerName(values url.Values) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if strings.HasPrefix(player, "bot") {
-		return "", fmt.Errorf("player name can't start with prefix bot, sorry")
-	}
 	return player, nil
 }
 
@@ -186,22 +188,20 @@ func handlePendingGame(w *http.ResponseWriter, values url.Values, player string,
 	if checkGetParamExists(values, "add_bot") {
 		p := Player{}
 		p.bot = true
+		p.Ready = true
 		g.Players["bot"+strconv.Itoa(len(g.Players))] = &p
+		if checkPendingCanStart(g) {
+			initGame(g)
+		}
 		httpGiveStatus(w, nil, fmt.Sprintf("A bot was added to the game %s.", g.name))
 		return
 	}
 	if checkGetParamExists(values, "ready") {
 		func() {
 			g.Players[player].Ready = true
-			if len(g.Players) == 1 {
-				return
+			if checkPendingCanStart(g) {
+				initGame(g)
 			}
-			for _, p := range g.Players {
-				if !p.Ready {
-					return
-				}
-			}
-			initGame(g)
 		}()
 		httpGiveStatus(w, nil, "The ready status is set.")
 		return

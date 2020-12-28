@@ -7,6 +7,48 @@ import (
 	"testing"
 )
 
+func TestPlayWithBot(t *testing.T) {
+	lobby = newLobby()
+	botTriggerQueue = make(chan triggerRequest, 50)
+	g := &Game{
+		Players: map[string]*Player{"0": &Player{}},
+		status:  GAME_STATUS_PENDING,
+	}
+	lobby.games["test"] = g
+	{
+		status, body, err := makeTestRequest("/?player=0&add_bot")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status != http.StatusOK {
+			t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
+		}
+		wantResp := `"status":"ok"`
+		if !strings.Contains(body, wantResp) {
+			t.Errorf("got %v wanted %v as a substring", body, wantResp)
+		}
+	}
+	if l := len(lobby.games["test"].Players); l != 2 {
+		t.Fatalf("expected 2 players, go %d", l)
+	}
+	{
+		status, body, err := makeTestRequest("?player=0&ready")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status != http.StatusOK {
+			t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
+		}
+		wantResp := `"status":"ok"`
+		if !strings.Contains(body, wantResp) {
+			t.Errorf("got %v wanted %v as a substring", body, wantResp)
+		}
+	}
+	if g.status != GAME_STATUS_RUNNING {
+		t.Errorf("wanted status running, got %s", g.status)
+	}
+}
+
 func TestStartPending(t *testing.T) {
 	lobby = newLobby()
 	lobby.games["test"] = &Game{

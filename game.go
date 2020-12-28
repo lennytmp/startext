@@ -91,6 +91,13 @@ func initGame(g *Game) {
 			g.Objects = append(g.Objects, SCV(n, l))
 		}
 		g.Objects = append(g.Objects, CommandCenter(n, l))
+		if pl.bot {
+			select {
+			case botTriggerQueue <- triggerRequest{time.Now().Add(5 * time.Second), g.name, n}:
+			default:
+				log.Printf("ERROR: Couldn't add a message to the bots channel for game %s, bot %s", g.name, n)
+			}
+		}
 		l++
 	}
 	log.Printf("Game %s started", g.name)
@@ -265,4 +272,16 @@ func buildSCV(g *Game, player string, locID int) error {
 	pl.Minerals -= COST_SCV_MINERALS
 	g.Objects[ccID].Building.Task = Task{Type: TASK_TYPE_BUILD_SCV}
 	return nil
+}
+
+func checkPendingCanStart(g *Game) bool {
+	if len(g.Players) == 1 {
+		return false
+	}
+	for _, p := range g.Players {
+		if !p.Ready {
+			return false
+		}
+	}
+	return true
 }
