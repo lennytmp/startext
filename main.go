@@ -16,7 +16,7 @@ var lobby *Lobby
 
 func main() {
 	lobby = newLobby()
-    botTriggerQueue = make(chan triggerRequest)
+	botTriggerQueue = make(chan triggerRequest)
 	go func() {
 		for {
 			lobby.mu.Lock()

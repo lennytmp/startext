@@ -1,12 +1,12 @@
 package main
 
 import (
-	"sync"
-	"time"
-    "log"
-    "math/rand"
 	"encoding/json"
 	"fmt"
+	"log"
+	"math/rand"
+	"sync"
+	"time"
 )
 
 const (
