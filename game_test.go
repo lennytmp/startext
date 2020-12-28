@@ -15,8 +15,8 @@ func basicLobbyGame() *Lobby {
 	g.lastSim = time.Now().Add(-3500 * time.Millisecond)
 	lobby.games[TESTGAME] = g
 	g.status = GAME_STATUS_RUNNING
-	g.Players["0"] = &Player{50, "", false}
-	g.Players["1"] = &Player{50, "", false}
+	g.Players["0"] = &Player{}
+	g.Players["1"] = &Player{}
 
 	g.Objects = append(g.Objects, CommandCenter("0", 0))
 	g.Objects = append(g.Objects, CommandCenter("1", 1))

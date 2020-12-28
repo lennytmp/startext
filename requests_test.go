@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -23,9 +24,9 @@ func TestStartPending(t *testing.T) {
 		if status := rr.Code; status != http.StatusOK {
 			t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
 		}
-		wantResp := `{"status":"ok"}`
-		if rr.Body.String() != wantResp {
-			t.Errorf("got %v want %v", rr.Body.String(), wantResp)
+		wantResp := `"status":"ok"`
+		if !strings.Contains(rr.Body.String(), wantResp) {
+			t.Errorf("got %v wanted %v as a substring", rr.Body.String(), wantResp)
 		}
 	}
 
@@ -39,9 +40,9 @@ func TestStartPending(t *testing.T) {
 		if status := rr.Code; status != http.StatusOK {
 			t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
 		}
-		wantResp := `{"status":"ok"}`
-		if rr.Body.String() != wantResp {
-			t.Errorf("got %v want %v", rr.Body.String(), wantResp)
+		wantResp := `"status":"ok"`
+		if !strings.Contains(rr.Body.String(), wantResp) {
+			t.Errorf("got %v wanted %v as a substring", rr.Body.String(), wantResp)
 		}
 	}
 
@@ -80,7 +81,7 @@ func TestQuit(t *testing.T) {
 				},
 				status: GAME_STATUS_PENDING,
 			},
-			wantResp: `{"status":"ok"}`,
+			wantResp: `{"data":{"status":"ok"}}`,
 			wantGame: `{"Players":{"2":{"Minerals":0,"Outcome":"","Ready":false}},"Locations":null,"Objects":null}`,
 		},
 	}
