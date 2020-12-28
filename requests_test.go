@@ -1,11 +1,24 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func fakeMakeBotRequest(url string) ([]byte, error) {
+	status, body, err := makeTestRequest(url)
+	var res []byte
+	if err != nil {
+		return res, fmt.Errorf("sending request failed %v", err)
+	}
+	if status != http.StatusOK {
+		return res, fmt.Errorf("bad status code: %v", status)
+	}
+	return []byte(body), nil
+}
 
 func TestPlayWithBot(t *testing.T) {
 	lobby = newLobby()
@@ -31,6 +44,13 @@ func TestPlayWithBot(t *testing.T) {
 	if l := len(lobby.games["test"].Players); l != 2 {
 		t.Fatalf("expected 2 players, go %d", l)
 	}
+	origBotUpdDelay := BOT_UPDATE_DELAY
+	BOT_UPDATE_DELAY = -1
+	makeBotRequestOverridable = fakeMakeBotRequest
+	defer func() {
+		BOT_UPDATE_DELAY = origBotUpdDelay
+		makeBotRequestOverridable = makeBotRequest
+	}()
 	{
 		status, body, err := makeTestRequest("?player=0&ready")
 		if err != nil {
@@ -47,6 +67,7 @@ func TestPlayWithBot(t *testing.T) {
 	if g.status != GAME_STATUS_RUNNING {
 		t.Errorf("wanted status running, got %s", g.status)
 	}
+	processBotQueue()
 }
 
 func TestStartPending(t *testing.T) {

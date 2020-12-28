@@ -15,7 +15,10 @@ type triggerRequest struct {
 	botName string
 }
 
-var botTriggerQueue chan triggerRequest
+var (
+	botTriggerQueue           chan triggerRequest
+	makeBotRequestOverridable = makeBotRequest
+)
 
 func processBotQueue() {
 	tr := <-botTriggerQueue
@@ -45,10 +48,9 @@ func makeBotRequest(url string) ([]byte, error) {
 }
 
 func triggerBot(gameName string, botName string) {
-	log.Printf("Here here")
 	{ // Get state and process it
 		rURL := fmt.Sprintf("/?player=%s", botName)
-		resp, err := makeBotRequest(rURL)
+		resp, err := makeBotRequestOverridable(rURL)
 		if err != nil {
 			log.Printf("ERROR: Making request %s for bot %s game %s failed with %v", rURL, botName, gameName, err)
 		}
@@ -57,16 +59,22 @@ func triggerBot(gameName string, botName string) {
 		if err != nil {
 			log.Printf("ERROR: Bot %s got resp %s from request %s for game %s, but couldn't transform it to Game: %v", botName, resp, gameName, err)
 		}
-	}
-	location_id := 0
-
-	{ // Make a decision and necessary callS
-		rURL := fmt.Sprintf("/?player=%s&location_id=%d&scv_to_work", botName, location_id)
-		_, err := makeBotRequest(rURL)
-		if err != nil {
-			log.Printf("ERROR: Making request %s for bot %s game %s failed with %v", rURL, botName, gameName, err)
+		minerals := g.Players[botName].Minerals
+		locationId := 0
+		var commandCenter GameObject
+		for _, gob := range g.Objects {
+			if gob.Owner == botName && gob.Type == GAME_BUILDING_COMMAND_CENTER {
+				locationId = gob.Location
+				commandCenter = gob
+			}
+		}
+		if minerals >= 50 && commandCenter.Task == (Task{}) {
+			rURL := fmt.Sprintf("/?player=%s&location_id=%d&build_scv", botName, locationId)
+			_, err := makeBotRequestOverridable(rURL)
+			if err != nil {
+				log.Printf("ERROR: Making request %s for bot %s game %s failed with %v", rURL, botName, gameName, err)
+			}
 		}
 	}
-
 	botTriggerQueue <- triggerRequest{time.Now().Add(30 * time.Second), gameName, botName}
 }

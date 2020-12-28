@@ -27,6 +27,10 @@ const (
 	STATUS_MOVING = 2
 )
 
+var (
+	BOT_UPDATE_DELAY = 5 * time.Second
+)
+
 func gameSim(g *Game) {
 	killedIDs := make(map[int]bool)
 	for i, gob := range g.Objects {
@@ -93,7 +97,7 @@ func initGame(g *Game) {
 		g.Objects = append(g.Objects, CommandCenter(n, l))
 		if pl.bot {
 			select {
-			case botTriggerQueue <- triggerRequest{time.Now().Add(5 * time.Second), g.name, n}:
+			case botTriggerQueue <- triggerRequest{time.Now().Add(BOT_UPDATE_DELAY), g.name, n}:
 			default:
 				log.Printf("ERROR: Couldn't add a message to the bots channel for game %s, bot %s", g.name, n)
 			}
