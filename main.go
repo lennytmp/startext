@@ -305,7 +305,7 @@ func httpGiveErr(w *http.ResponseWriter, err error) {
 
 func httpGiveStatus(w *http.ResponseWriter, err error, success string) {
 	if err == nil {
-		if success != "" {
+		if success == "" {
 			fmt.Fprintf(*w, "%s", fmt.Sprintf(`{"data":{"status":"ok"}}`))
 			return
 		}

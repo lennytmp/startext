@@ -8,41 +8,22 @@ import (
 )
 
 func TestStartPending(t *testing.T) {
-	api := apiHandler{}
 	lobby = newLobby()
 	lobby.games["test"] = &Game{
 		Players: map[string]*Player{"0": &Player{}, "1": &Player{}},
 		status:  GAME_STATUS_PENDING,
 	}
-	{ // Player0 is ready
-		req, err := http.NewRequest("GET", "/?player=0&ready", nil)
+	for _, rURL := range []string{"/?player=0&ready", "?player=1&ready"} {
+		status, body, err := makeTestRequest(rURL)
 		if err != nil {
 			t.Fatal(err)
 		}
-		rr := httptest.NewRecorder()
-		api.ServeHTTP(rr, req)
-		if status := rr.Code; status != http.StatusOK {
+		if status != http.StatusOK {
 			t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
 		}
 		wantResp := `"status":"ok"`
-		if !strings.Contains(rr.Body.String(), wantResp) {
-			t.Errorf("got %v wanted %v as a substring", rr.Body.String(), wantResp)
-		}
-	}
-
-	{
-		req, err := http.NewRequest("GET", "/?player=1&ready", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		rr := httptest.NewRecorder()
-		api.ServeHTTP(rr, req)
-		if status := rr.Code; status != http.StatusOK {
-			t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
-		}
-		wantResp := `"status":"ok"`
-		if !strings.Contains(rr.Body.String(), wantResp) {
-			t.Errorf("got %v wanted %v as a substring", rr.Body.String(), wantResp)
+		if !strings.Contains(body, wantResp) {
+			t.Errorf("got %v wanted %v as a substring", body, wantResp)
 		}
 	}
 
@@ -60,55 +41,46 @@ func TestStartPending(t *testing.T) {
 	}
 }
 
-func TestQuit(t *testing.T) {
+func makeTestRequest(url string) (int, string, error) {
 	api := apiHandler{}
-	req, err := http.NewRequest("GET", "/?player=0&quit", nil)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, "", nil
+	}
+	rr := httptest.NewRecorder()
+	api.ServeHTTP(rr, req)
+	return rr.Code, rr.Body.String(), nil
+}
+
+func TestQuit(t *testing.T) {
+	lobby = newLobby()
+	lobby.games["test"] = &Game{
+		name: "Pending game 2 players",
+		Players: map[string]*Player{
+			"0": &Player{},
+			"2": &Player{},
+		},
+		status: GAME_STATUS_PENDING,
+	}
+	status, body, err := makeTestRequest("/?player=0&quit")
 	if err != nil {
 		t.Fatal(err)
 	}
-	testCases := []struct {
-		name     string
-		game     *Game
-		wantResp string
-		wantGame string
-	}{
-		{
-			game: &Game{
-				name: "Pending game 2 players",
-				Players: map[string]*Player{
-					"0": &Player{},
-					"2": &Player{},
-				},
-				status: GAME_STATUS_PENDING,
-			},
-			wantResp: `{"data":{"status":"ok"}}`,
-			wantGame: `{"Players":{"2":{"Minerals":0,"Outcome":"","Ready":false}},"Locations":null,"Objects":null}`,
-		},
+	if status != http.StatusOK {
+		t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
 	}
-	for _, tc := range testCases {
-		lobby = newLobby()
-		lobby.games["test"] = tc.game
-		rr := httptest.NewRecorder()
-		api.ServeHTTP(rr, req)
-		if status := rr.Code; status != http.StatusOK {
-			t.Errorf("%s: wrong status code: got %v want %v", tc.name, status, http.StatusOK)
-		}
-		if rr.Body.String() != tc.wantResp {
-			t.Errorf("%s: got %v want %v", tc.name, rr.Body.String(), tc.wantResp)
-		}
-		gotGame := lobby.games["test"].exportAll()
-		if gotGame != tc.wantGame {
-			t.Errorf("%s: got %v want %v", tc.name, gotGame, tc.wantGame)
-		}
+	wantResp := `"status":"ok"`
+	if !strings.Contains(body, wantResp) {
+		t.Errorf("got %v wanted %v as a substring", body, wantResp)
+	}
+	wantGame := `{"Players":{"2":{"Minerals":0,"Outcome":"","Ready":false}},"Locations":null,"Objects":null}`
+	gotGame := lobby.games["test"].exportAll()
+	if gotGame != wantGame {
+		t.Errorf("got game %v want %v", gotGame, wantGame)
 	}
 }
 
 func TestJustPlayer(t *testing.T) {
-	api := apiHandler{}
-	req, err := http.NewRequest("GET", "/?player=0", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
 	testCases := []struct {
 		name  string
 		games map[string]*Game
@@ -169,13 +141,15 @@ func TestJustPlayer(t *testing.T) {
 	for _, tc := range testCases {
 		lobby = newLobby()
 		lobby.games = tc.games
-		rr := httptest.NewRecorder()
-		api.ServeHTTP(rr, req)
-		if status := rr.Code; status != http.StatusOK {
+		status, body, err := makeTestRequest("?player=0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status != http.StatusOK {
 			t.Errorf("%s: wrong status code: got %v want %v", tc.name, status, http.StatusOK)
 		}
-		if rr.Body.String() != tc.want {
-			t.Errorf("%s: got %v want %v", tc.name, rr.Body.String(), tc.want)
+		if body != tc.want {
+			t.Errorf("%s: got %v want %v", tc.name, body, tc.want)
 		}
 	}
 }
