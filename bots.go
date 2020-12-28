@@ -57,19 +57,53 @@ func triggerBot(gameName string, botName string) {
 		g := &Game{}
 		err = json.Unmarshal(resp, g)
 		if err != nil {
-			log.Printf("ERROR: Bot %s got resp %s from request %s for game %s, but couldn't transform it to Game: %v", botName, resp, gameName, err)
+			log.Printf("ERROR: Bot %s got resp %s from request %s for game %s, but couldn't transform it to Game: %v", botName, resp, rURL, gameName, err)
 		}
 		minerals := g.Players[botName].Minerals
-		locationId := 0
+		homeId := 0
 		var commandCenter GameObject
+		perLocOwner := make(map[int]map[string]map[int]int)
 		for _, gob := range g.Objects {
 			if gob.Owner == botName && gob.Type == GAME_BUILDING_COMMAND_CENTER {
-				locationId = gob.Location
+				homeId = gob.Location
 				commandCenter = gob
+				continue
+			}
+			if gob.Type == GAME_BUILDING_COMMAND_CENTER {
+				continue
+			}
+			if _, ok := perLocOwner[gob.Location]; !ok {
+				perLocOwner[gob.Location] = make(map[string]map[int]int)
+				perLocOwner[gob.Location][gob.Owner] = make(map[int]int)
+			}
+			if _, ok := perLocOwner[gob.Location][gob.Owner]; !ok {
+				perLocOwner[gob.Location][gob.Owner] = make(map[int]int)
+			}
+			if _, ok := perLocOwner[gob.Location][gob.Owner][gob.Status]; !ok {
+				perLocOwner[gob.Location][gob.Owner][gob.Status] = 0
+			}
+			perLocOwner[gob.Location][gob.Owner][gob.Status]++
+		}
+		if len(perLocOwner[homeId]) > 1 {
+			// We are under attack
+			for i := 0; i < perLocOwner[homeId][botName][STATUS_MINING]; i++ {
+				rURL := fmt.Sprintf("/?player=%s&location_id=%d&scv_to_idle", botName, homeId)
+				_, err := makeBotRequestOverridable(rURL)
+				if err != nil {
+					log.Printf("ERROR: Making request %s for bot %s game %s failed with %v", rURL, botName, gameName, err)
+				}
+			}
+		} else {
+			for i := 0; i < perLocOwner[homeId][botName][STATUS_IDLE]; i++ {
+				rURL := fmt.Sprintf("/?player=%s&location_id=%d&scv_to_work", botName, homeId)
+				_, err := makeBotRequestOverridable(rURL)
+				if err != nil {
+					log.Printf("ERROR: Making request %s for bot %s game %s failed with %v", rURL, botName, gameName, err)
+				}
 			}
 		}
 		if minerals >= 50 && commandCenter.Task == (Task{}) {
-			rURL := fmt.Sprintf("/?player=%s&location_id=%d&build_scv", botName, locationId)
+			rURL := fmt.Sprintf("/?player=%s&location_id=%d&build_scv", botName, homeId)
 			_, err := makeBotRequestOverridable(rURL)
 			if err != nil {
 				log.Printf("ERROR: Making request %s for bot %s game %s failed with %v", rURL, botName, gameName, err)
