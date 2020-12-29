@@ -68,6 +68,17 @@ func TestPlayWithBot(t *testing.T) {
 		t.Errorf("wanted status running, got %s", g.status)
 	}
 	processBotQueue()
+	for _, gob := range g.Objects {
+		if gob.Owner == "0" {
+			continue
+		}
+		if gob.Type == GAME_UNIT_SCV && gob.Status == STATUS_IDLE {
+			t.Errorf("Expected the bot to send all SCVs to mine minerals, found idle instead %v", gob)
+		}
+		if gob.Type == GAME_BUILDING_COMMAND_CENTER && gob.Task == (Task{}) {
+			t.Errorf("Expected the bot to start producing SCV, but nothing is queued %v", gob)
+		}
+	}
 }
 
 func TestStartPending(t *testing.T) {

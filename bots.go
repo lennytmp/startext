@@ -87,7 +87,7 @@ func triggerBot(gameName string, botName string) {
 		if len(perLocOwner[homeId]) > 1 {
 			// We are under attack
 			for i := 0; i < perLocOwner[homeId][botName][STATUS_MINING]; i++ {
-				rURL := fmt.Sprintf("/?player=%s&location_id=%d&scv_to_idle", botName, homeId)
+				rURL := fmt.Sprintf("/?player=%s&location_id=%d&idle_scv", botName, homeId)
 				_, err := makeBotRequestOverridable(rURL)
 				if err != nil {
 					log.Printf("ERROR: Making request %s for bot %s game %s failed with %v", rURL, botName, gameName, err)
