@@ -72,10 +72,10 @@ func TestPlayWithBot(t *testing.T) {
 		if gob.Owner == "0" {
 			continue
 		}
-		if gob.Type == GAME_UNIT_SCV && gob.Status == STATUS_IDLE {
+		if gob.Unit.Type == UNIT_SCV && gob.Unit.Status == STATUS_IDLE {
 			t.Errorf("Expected the bot to send all SCVs to mine minerals, found idle instead %v", gob)
 		}
-		if gob.Type == GAME_BUILDING_COMMAND_CENTER && gob.Task == (Task{}) {
+		if gob.Building.Type == BUILDING_COMMAND_CENTER && gob.Task == (Task{}) {
 			t.Errorf("Expected the bot to start producing SCV, but nothing is queued %v", gob)
 		}
 	}
@@ -88,9 +88,16 @@ func TestBuildBarracks(t *testing.T) {
 		status:  GAME_STATUS_PENDING,
 	}
 	initGame(g)
-	g.Players["0"].Minerals = 150
+	testOwner := "0"
+	g.Players[testOwner].Minerals = 150
+	homeID := 0
+	for _, gob := range g.Objects {
+		if gob.Owner == testOwner && gob.Building.Type == BUILDING_COMMAND_CENTER {
+			homeID = gob.Location
+		}
+	}
 	lobby.games["test"] = g
-	status, body, err := makeTestRequest("/?player=0&location_id=0&build=barracks")
+	status, body, err := makeTestRequest(fmt.Sprintf("/?player=%s&location_id=%d&build=barracks", testOwner, homeID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,16 +110,16 @@ func TestBuildBarracks(t *testing.T) {
 	}
 	found := false
 	for _, gob := range g.Objects {
-		if gob.Owner == "0" && gob.Type == GAME_BUILDING_BARRACKS {
+		if gob.Owner == testOwner && gob.Building.Type == BUILDING_BARRACKS {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("barracks not found in game objects %v", g.Objects)
+		t.Errorf("barracks not found in game objects %v", g.Export("0"))
 	}
-    if g.Players["0"].Minerals != 0 {
-        t.Errorf("expected 0 balance for player 0, but found %d", g.Players["0"])
-    }
+	if g.Players[testOwner].Minerals != 0 {
+		t.Errorf("expected 0 balance for player 0, but found %d", g.Players[testOwner].Minerals)
+	}
 }
 
 func TestStartPending(t *testing.T) {

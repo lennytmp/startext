@@ -10,29 +10,30 @@ import (
 )
 
 const (
-    OBJECT_UNIT             = "unit"
-    OBJECT_BUILDING = "building"
+	OBJECT_UNIT     = "unit"
+	OBJECT_BUILDING = "building"
 
-	UNIT_SCV                = "scv"
+	UNIT_SCV = "scv"
 
 	BUILDING_COMMAND_CENTER = "command center"
 	BUILDING_BARRACKS       = "barracks"
 
-	ELIMINATED                   = "Eliminated"
-	VICTORY                      = "Victory"
-	GAME_STATUS_FINISHED         = "Finished"
-	GAME_STATUS_RUNNING          = "Running"
-	GAME_STATUS_PENDING          = "Pending"
+	ELIMINATED           = "Eliminated"
+	VICTORY              = "Victory"
+	GAME_STATUS_FINISHED = "Finished"
+	GAME_STATUS_RUNNING  = "Running"
+	GAME_STATUS_PENDING  = "Pending"
 
 	TASK_TYPE_BUILD_SCV = 1
 
 	COST_SCV_MINERALS = 50
 
-	STATUS_IDLE   = 0
-	STATUS_MINING = 1
-	STATUS_MOVING = 2
+	STATUS_IDLE     = 0
+	STATUS_MINING   = 1
+	STATUS_MOVING   = 2
+	STATUS_BUILDING = 3
 
-    STATUS_UNDER_CONSTRUCTION = "Under Construction"
+	STATUS_UNDER_CONSTRUCTION = "Under Construction"
 )
 
 var (
@@ -42,27 +43,27 @@ var (
 func gameSim(g *Game) {
 	killedIDs := make(map[int]bool)
 	for i, gob := range g.Objects {
-        if gob.Type == OBJECT_UNIT {
-            if gob.Unit.Status == STATUS_MINING {
-                g.Players[gob.Owner].Minerals += gob.yps
-            }
-            if gob.Unit.Status == STATUS_IDLE {
-                var targetIDs []int
-                for j, pt := range g.Objects {
-                    if pt.Owner != gob.Owner && pt.Location == gob.Location {
-                        targetIDs = append(targetIDs, j)
-                    }
-                }
-                if len(targetIDs) != 0 {
-                    targetID := targetIDs[rand.Intn(len(targetIDs))]
-                    g.Objects[targetID].Hp -= gob.dps
-                    if g.Objects[targetID].Hp <= 0 {
-                        killedIDs[targetID] = true
-                        log.Printf("SCV killed [%d-->%d]", i, targetID)
-                    }
-                }
-            }
-        }
+		if gob.Type == OBJECT_UNIT {
+			if gob.Unit.Status == STATUS_MINING {
+				g.Players[gob.Owner].Minerals += gob.yps
+			}
+			if gob.Unit.Status == STATUS_IDLE {
+				var targetIDs []int
+				for j, pt := range g.Objects {
+					if pt.Owner != gob.Owner && pt.Location == gob.Location {
+						targetIDs = append(targetIDs, j)
+					}
+				}
+				if len(targetIDs) != 0 {
+					targetID := targetIDs[rand.Intn(len(targetIDs))]
+					g.Objects[targetID].Hp -= gob.dps
+					if g.Objects[targetID].Hp <= 0 {
+						killedIDs[targetID] = true
+						log.Printf("SCV killed [%d-->%d]", i, targetID)
+					}
+				}
+			}
+		}
 		if gob.Type == OBJECT_BUILDING && gob.Building.Task != (Task{}) {
 			g.Objects[i].Task.Progress += gob.taskSpeed
 			if g.Objects[i].Task.Progress >= 100 {
@@ -101,7 +102,7 @@ func initGame(g *Game) {
 	for n, pl := range g.Players {
 		g.Locations = append(g.Locations, Location{})
 		pl.Minerals = 50
-		for j := 0; j < 5; j++ {
+		for j := 0; j < 4; j++ {
 			g.Objects = append(g.Objects, SCV(n, l))
 		}
 		g.Objects = append(g.Objects, CommandCenter(n, l))
@@ -123,10 +124,10 @@ func CommandCenter(owner string, location int) GameObject {
 		Location: location,
 		Hp:       1500,
 		HpMax:    1500,
-        Type: OBJECT_BUILDING,
+		Type:     OBJECT_BUILDING,
 		Building: Building{
 			taskSpeed: 20,
-            Type:     BUILDING_COMMAND_CENTER,
+			Type:      BUILDING_COMMAND_CENTER,
 		},
 	}
 }
@@ -137,18 +138,19 @@ func Barracks(owner string, location int, ready bool) GameObject {
 		Location: location,
 		Hp:       1000,
 		HpMax:    1000,
-        Type: OBJECT_BUILDING,
+		Type:     OBJECT_BUILDING,
 		Building: Building{
-            Type:     BUILDING_BARRACKS,
-            TimeToBuild: 50,
-			taskSpeed: 20,
+			Type:        BUILDING_BARRACKS,
+			TimeToBuild: 50,
+			taskSpeed:   20,
 		},
 	}
-    if !ready {
-        gob.Hp = 100
-        gob.Building.Status = STATUS_UNDER_CONSTRUCTION
-        gob.Building.LeftToBuild = gob.Building.TimeToBuild
-    }
+	if !ready {
+		gob.Hp = 100
+		gob.Building.Status = STATUS_UNDER_CONSTRUCTION
+		gob.Building.LeftToBuild = gob.Building.TimeToBuild
+	}
+	return gob
 }
 
 func SCV(owner string, location int) GameObject {
@@ -157,9 +159,9 @@ func SCV(owner string, location int) GameObject {
 		Location: location,
 		Hp:       60,
 		HpMax:    60,
-        Type: OBJECT_BUILDING,
+		Type:     OBJECT_UNIT,
 		Unit: Unit{
-            Type:     UNIT_SCV,
+			Type:  UNIT_SCV,
 			dps:   8,
 			speed: 4,
 			yps:   1,
@@ -192,17 +194,17 @@ type GameObject struct {
 	Hp       int
 	HpMax    int
 	Type     string
-	Building
-	Unit
+	Building `json:"Building"`
+	Unit     `json:"Unit"`
 }
 
 type Building struct {
-    Type      string
-	Task      Task
-    Status    string
-    LeftToBuild int
-    TimeToBuild int
-	taskSpeed int
+	Type        string
+	Task        Task
+	Status      string
+	LeftToBuild int
+	TimeToBuild int
+	taskSpeed   int
 }
 
 type Task struct {
@@ -211,13 +213,12 @@ type Task struct {
 }
 
 type Unit struct {
-    Type   string
+	Type   string
 	dps    int
 	speed  int
 	Status int
 	yps    int
 }
-
 
 func newGame(gameName string) *Game {
 	g := &Game{}
@@ -271,7 +272,7 @@ func (g Game) String() string {
 
 func sendSCV(g *Game, player string, locID int, destID int) error {
 	for i, gob := range g.Objects {
-		if gob.Type == GAME_UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Status == STATUS_IDLE {
+		if gob.Unit.Type == UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Unit.Status == STATUS_IDLE {
 			g.Objects[i].Location = destID
 			return nil
 		}
@@ -281,8 +282,8 @@ func sendSCV(g *Game, player string, locID int, destID int) error {
 
 func statusSCV(g *Game, player string, locID int, status_from int, status_to int) error {
 	for i, gob := range g.Objects {
-		if gob.Type == GAME_UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Status == status_from {
-			g.Objects[i].Status = status_to
+		if gob.Unit.Type == UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Unit.Status == status_from {
+			g.Objects[i].Unit.Status = status_to
 			return nil
 		}
 	}
@@ -293,13 +294,13 @@ func statusSCV(g *Game, player string, locID int, status_from int, status_to int
 }
 
 func build(g *Game, player string, locID int, building string) error {
-	if building == GAME_BUILDING_BARRACKS {
+	if building == BUILDING_BARRACKS {
 		if m := g.Players[player].Minerals; m < 150 {
 			return fmt.Errorf("not enough minerals, need 150, but you have %d", m)
 		}
 		var scv *GameObject
 		for i, gob := range g.Objects {
-			if gob.Location == locID && gob.Type == GAME_UNIT_SCV && gob.Owner == player && gob.Status == STATUS_IDLE {
+			if gob.Location == locID && gob.Unit.Type == UNIT_SCV && gob.Owner == player && gob.Unit.Status == STATUS_IDLE {
 				scv = &g.Objects[i]
 				break
 			}
@@ -307,6 +308,7 @@ func build(g *Game, player string, locID int, building string) error {
 		if scv == nil {
 			return fmt.Errorf("couldn't find idle scv at location %d", locID)
 		}
+		scv.Unit.Status = STATUS_BUILDING
 		g.Players[player].Minerals -= 150
 		g.Objects = append(g.Objects, Barracks(player, locID, false))
 		log.Printf("%s is building %s", player, building)
@@ -319,7 +321,7 @@ func trainSCV(g *Game, player string, locID int) error {
 	ccFound := false
 	var ccID int
 	for i, gob := range g.Objects {
-		if gob.Type == GAME_BUILDING_COMMAND_CENTER && gob.Location == locID && gob.Owner == player {
+		if gob.Building.Type == BUILDING_COMMAND_CENTER && gob.Location == locID && gob.Owner == player {
 			ccFound = true
 			ccID = i
 		}

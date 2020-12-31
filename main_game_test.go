@@ -30,7 +30,7 @@ func TestAttackDecreasesHp(t *testing.T) {
 	updLobby(l)
 	cmd1 := g.Objects[1]
 	if cmd1.Hp >= cmd1.HpMax {
-		t.Errorf("Command center was supposed to be damaged but has %d hp out of %d", cmd1.Hp, cmd1.HpMax)
+		t.Errorf("command center was supposed to be damaged but has %d hp out of %d", cmd1.Hp, cmd1.HpMax)
 	}
 }
 

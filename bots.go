@@ -61,12 +61,12 @@ func triggerBot(gameName string, botName string) {
 		}
 		minerals := g.Players[botName].Minerals
 		homeId := 0
-		var commandCenter GameObject
+		var commandCenter *GameObject
 		perLocOwner := make(map[int]map[string]map[int]int)
-		for _, gob := range g.Objects {
-			if gob.Owner == botName && gob.Type == OBJECT_BUILDING && gob.Building.Type == BUILDING_COMMAND_CENTER {
+		for j, gob := range g.Objects {
+			if gob.Owner == botName && gob.Building.Type == BUILDING_COMMAND_CENTER {
 				homeId = gob.Location
-				commandCenter = gob
+				commandCenter = &g.Objects[j]
 				continue
 			}
 			if gob.Type == OBJECT_BUILDING {
