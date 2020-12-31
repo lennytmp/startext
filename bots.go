@@ -64,12 +64,12 @@ func triggerBot(gameName string, botName string) {
 		var commandCenter GameObject
 		perLocOwner := make(map[int]map[string]map[int]int)
 		for _, gob := range g.Objects {
-			if gob.Owner == botName && gob.Type == GAME_BUILDING_COMMAND_CENTER {
+			if gob.Owner == botName && gob.Type == OBJECT_BUILDING && gob.Building.Type == BUILDING_COMMAND_CENTER {
 				homeId = gob.Location
 				commandCenter = gob
 				continue
 			}
-			if gob.Type == GAME_BUILDING_COMMAND_CENTER {
+			if gob.Type == OBJECT_BUILDING {
 				continue
 			}
 			if _, ok := perLocOwner[gob.Location]; !ok {
@@ -79,10 +79,10 @@ func triggerBot(gameName string, botName string) {
 			if _, ok := perLocOwner[gob.Location][gob.Owner]; !ok {
 				perLocOwner[gob.Location][gob.Owner] = make(map[int]int)
 			}
-			if _, ok := perLocOwner[gob.Location][gob.Owner][gob.Status]; !ok {
-				perLocOwner[gob.Location][gob.Owner][gob.Status] = 0
+			if _, ok := perLocOwner[gob.Location][gob.Owner][gob.Unit.Status]; !ok {
+				perLocOwner[gob.Location][gob.Owner][gob.Unit.Status] = 0
 			}
-			perLocOwner[gob.Location][gob.Owner][gob.Status]++
+			perLocOwner[gob.Location][gob.Owner][gob.Unit.Status]++
 		}
 		if len(perLocOwner[homeId]) > 1 {
 			// We are under attack

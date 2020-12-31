@@ -110,6 +110,9 @@ func TestBuildBarracks(t *testing.T) {
 	if !found {
 		t.Errorf("barracks not found in game objects %v", g.Objects)
 	}
+    if g.Players["0"].Minerals != 0 {
+        t.Errorf("expected 0 balance for player 0, but found %d", g.Players["0"])
+    }
 }
 
 func TestStartPending(t *testing.T) {
