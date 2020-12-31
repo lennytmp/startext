@@ -221,21 +221,21 @@ func handleRunningGame(w *http.ResponseWriter, values url.Values, player string,
 	}
 
 	if checkGetParamExists(values, "build_scv") {
-		log.Printf("Player: %s is building a SCV", player)
-		err = buildSCV(g, player, locID)
+		log.Printf("%s is building a SCV", player)
+		err = trainSCV(g, player, locID)
 		httpGiveErr(w, err)
 		return
 	}
 
 	if checkGetParamExists(values, "scv_to_work") {
-		log.Printf("Player: %s is sending SCV to work", player)
+		log.Printf("%s is sending SCV to work", player)
 		err = statusSCV(g, player, locID, STATUS_IDLE, STATUS_MINING)
 		httpGiveErr(w, err)
 		return
 	}
 
 	if checkGetParamExists(values, "idle_scv") {
-		log.Printf("Player: %s is sending SCV to idle", player)
+		log.Printf("%s is sending SCV to idle", player)
 		err = statusSCV(g, player, locID, STATUS_MINING, STATUS_IDLE)
 		httpGiveErr(w, err)
 		return
@@ -248,8 +248,19 @@ func handleRunningGame(w *http.ResponseWriter, values url.Values, player string,
 			return
 		}
 
-		log.Printf("Player: %s is sending SCV [%d-->%d]", player, locID, destID)
+		log.Printf("%s is sending SCV [%d-->%d]", player, locID, destID)
 		err = sendSCV(g, player, locID, destID)
+		httpGiveErr(w, err)
+		return
+	}
+
+	if checkGetParamExists(values, "build") {
+		building, err := getGetStrParam(values, "build")
+		if err != nil {
+			httpGiveErr(w, err)
+			return
+		}
+		err = build(g, player, locID, building)
 		httpGiveErr(w, err)
 		return
 	}

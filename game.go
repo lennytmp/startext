@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	GAME_UNIT_SCV                = 1
-	GAME_BUILDING_COMMAND_CENTER = 2
+	GAME_UNIT_SCV                = "scv"
+	GAME_BUILDING_COMMAND_CENTER = "command center"
+	GAME_BUILDING_BARRACKS       = "barracks"
 	ELIMINATED                   = "Eliminated"
 	VICTORY                      = "Victory"
 	GAME_STATUS_FINISHED         = "Finished"
@@ -120,6 +121,19 @@ func CommandCenter(owner string, location int) GameObject {
 	}
 }
 
+func Barracks(owner string, location int) GameObject {
+	return GameObject{
+		Owner:    owner,
+		Location: location,
+		Hp:       1000,
+		HpMax:    1000,
+		Type:     GAME_BUILDING_BARRACKS,
+		Building: Building{
+			taskSpeed: 20,
+		},
+	}
+}
+
 func SCV(owner string, location int) GameObject {
 	return GameObject{
 		Owner:    owner,
@@ -200,7 +214,7 @@ type GameObject struct {
 	Location int
 	Hp       int
 	HpMax    int
-	Type     int
+	Type     string
 	Building
 	Unit
 }
@@ -254,7 +268,30 @@ func statusSCV(g *Game, player string, locID int, status_from int, status_to int
 	return fmt.Errorf("couldn't find any IDLE SCVs at location %d for player %s", locID, player)
 }
 
-func buildSCV(g *Game, player string, locID int) error {
+func build(g *Game, player string, locID int, building string) error {
+	if building == GAME_BUILDING_BARRACKS {
+		if m := g.Players[player].Minerals; m < 150 {
+			return fmt.Errorf("not enough minerals, need 150, but you have %d", m)
+		}
+		var scv *GameObject
+		for _, gob := range g.Objects {
+			if gob.Location == locID && gob.Type == GAME_UNIT_SCV && gob.Owner == player && gob.Status == STATUS_IDLE {
+				scv = &gob
+				break
+			}
+		}
+		if scv == nil {
+			return fmt.Errorf("couldn't find idle scv at location %d", locID)
+		}
+		g.Players[player].Minerals -= 150
+		g.Objects = append(g.Objects, Barracks(player, locID))
+		log.Printf("%s is building %s", player, building)
+		return nil
+	}
+	return fmt.Errorf("unknown building type %s", building)
+}
+
+func trainSCV(g *Game, player string, locID int) error {
 	ccFound := false
 	var ccID int
 	for i, gob := range g.Objects {

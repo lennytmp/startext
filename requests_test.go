@@ -81,6 +81,37 @@ func TestPlayWithBot(t *testing.T) {
 	}
 }
 
+func TestBuildBarracks(t *testing.T) {
+	lobby = newLobby()
+	g := &Game{
+		Players: map[string]*Player{"0": &Player{}, "1": &Player{}},
+		status:  GAME_STATUS_PENDING,
+	}
+	initGame(g)
+	g.Players["0"].Minerals = 150
+	lobby.games["test"] = g
+	status, body, err := makeTestRequest("/?player=0&location_id=0&build=barracks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Errorf("wrong status code: got %v want %v", status, http.StatusOK)
+	}
+	wantResp := `"status":"ok"`
+	if !strings.Contains(body, wantResp) {
+		t.Errorf("got %v wanted %v as a substring", body, wantResp)
+	}
+	found := false
+	for _, gob := range g.Objects {
+		if gob.Owner == "0" && gob.Type == GAME_BUILDING_BARRACKS {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("barracks not found in game objects %v", g.Objects)
+	}
+}
+
 func TestStartPending(t *testing.T) {
 	lobby = newLobby()
 	lobby.games["test"] = &Game{
