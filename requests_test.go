@@ -149,12 +149,15 @@ func TestBuildBarracks(t *testing.T) {
 		}
 	}
 	elapsed := time.Now().Sub(start)
-	highB := (testBuildTime + 5*time.Millisecond).Milliseconds()
+	highB := (testBuildTime + 100*time.Millisecond).Milliseconds()
 	if elapsed.Milliseconds() < testBuildTime.Milliseconds() || elapsed.Milliseconds() > highB {
 		t.Errorf("expected construction to take %dms but it took %dms", testBuildTime.Milliseconds(), elapsed.Milliseconds())
 	}
 	if st := g.Objects[barracksID].Building.Status; st != BUILDING_STATUS_IDLE {
 		t.Errorf("expected idle status for barracks, got %s", st)
+	}
+	if g.Objects[barracksID].Hp < g.Objects[barracksID].HpMax {
+		t.Errorf("expected hp to be hpMax but got %d[%d]", g.Objects[barracksID].Hp, g.Objects[barracksID].HpMax)
 	}
 }
 
