@@ -18,8 +18,9 @@ const (
 	BUILDING_COMMAND_CENTER = "command center"
 	BUILDING_BARRACKS       = "barracks"
 
-	ELIMINATED           = "Eliminated"
-	VICTORY              = "Victory"
+	ELIMINATED = "Eliminated"
+	VICTORY    = "Victory"
+
 	GAME_STATUS_FINISHED = "Finished"
 	GAME_STATUS_RUNNING  = "Running"
 	GAME_STATUS_PENDING  = "Pending"
@@ -28,40 +29,82 @@ const (
 
 	COST_SCV_MINERALS = 50
 
-	STATUS_IDLE     = 0
-	STATUS_MINING   = 1
-	STATUS_MOVING   = 2
-	STATUS_BUILDING = 3
+	UNIT_STATUS_IDLE     = ""
+	UNIT_STATUS_MINING   = "mining"
+	UNIT_STATUS_MOVING   = "moving"
+	UNIT_STATUS_BUILDING = "building"
 
-	STATUS_UNDER_CONSTRUCTION = "Under Construction"
+	BUILDING_STATUS_IDLE               = ""
+	BUILDING_STATUS_UNDER_CONSTRUCTION = "Under Construction"
 )
 
 var (
 	BOT_UPDATE_DELAY = 5 * time.Second
 )
 
+func simSCVBuilding(g *Game, scvID int, elapsed time.Duration, buildIDs map[int]bool) map[int]bool {
+	scv := g.Objects[scvID]
+	for j, pt := range g.Objects {
+		if pt.Owner == scv.Owner && pt.Location == scv.Location && pt.Building.Status == BUILDING_STATUS_UNDER_CONSTRUCTION {
+			if _, ok := buildIDs[j]; !ok {
+				buildIDs[j] = true
+				progress := elapsed.Milliseconds()
+				if pt.LeftToBuild < progress {
+					progress = pt.LeftToBuild
+				}
+				g.Objects[j].Building.LeftToBuild -= progress
+				g.Objects[j].Hp += int(float64((pt.HpMax-100)*int(progress)) / float64(pt.TimeToBuild))
+				if g.Objects[j].Building.LeftToBuild == 0 {
+					g.Objects[j].Building.Status = BUILDING_STATUS_IDLE
+					g.Objects[scvID].Unit.Status = UNIT_STATUS_IDLE
+					log.Printf("%s finished building %s", scv.Owner, pt.Building.Type)
+				}
+				return buildIDs
+			}
+		}
+	}
+	g.Objects[scvID].Unit.Status = UNIT_STATUS_IDLE
+	return buildIDs
+}
+
 func gameSim(g *Game) {
 	killedIDs := make(map[int]bool)
+	buildIDs := make(map[int]bool)
+	now := time.Now()
+	if g.lastSim.IsZero() {
+		g.lastSim = time.Now()
+	}
+	elapsed := now.Sub(g.lastSim)
+	if elapsed < time.Millisecond {
+		return
+	}
+	g.lastSim = time.Now()
 	for i, gob := range g.Objects {
 		if gob.Type == OBJECT_UNIT {
-			if gob.Unit.Status == STATUS_MINING {
+			if gob.Unit.Status == UNIT_STATUS_MINING {
 				g.Players[gob.Owner].Minerals += gob.yps
+				continue
 			}
-			if gob.Unit.Status == STATUS_IDLE {
-				var targetIDs []int
+			if gob.Unit.Status == UNIT_STATUS_IDLE {
+				var attIDs []int
 				for j, pt := range g.Objects {
 					if pt.Owner != gob.Owner && pt.Location == gob.Location {
-						targetIDs = append(targetIDs, j)
+						attIDs = append(attIDs, j)
 					}
 				}
-				if len(targetIDs) != 0 {
-					targetID := targetIDs[rand.Intn(len(targetIDs))]
+				if len(attIDs) != 0 {
+					targetID := attIDs[rand.Intn(len(attIDs))]
 					g.Objects[targetID].Hp -= gob.dps
 					if g.Objects[targetID].Hp <= 0 {
 						killedIDs[targetID] = true
 						log.Printf("SCV killed [%d-->%d]", i, targetID)
 					}
 				}
+				continue
+			}
+			if gob.Unit.Status == UNIT_STATUS_BUILDING {
+				buildIDs = simSCVBuilding(g, i, elapsed, buildIDs)
+				continue
 			}
 		}
 		if gob.Type == OBJECT_BUILDING && gob.Building.Task != (Task{}) {
@@ -78,13 +121,12 @@ func gameSim(g *Game) {
 	for k, v := range g.Objects {
 		if !killedIDs[k] {
 			nos = append(nos, v)
-			if v.Type == OBJECT_BUILDING {
+			if v.Type == OBJECT_BUILDING && v.Building.Status != BUILDING_STATUS_UNDER_CONSTRUCTION {
 				buildingsPerPlayer[v.Owner] = true
 			}
 		}
 	}
 	g.Objects = nos
-	g.lastSim = time.Now()
 	for k := range g.Players {
 		_, ok := buildingsPerPlayer[k]
 		if !ok {
@@ -141,13 +183,13 @@ func Barracks(owner string, location int, ready bool) GameObject {
 		Type:     OBJECT_BUILDING,
 		Building: Building{
 			Type:        BUILDING_BARRACKS,
-			TimeToBuild: 50,
+			TimeToBuild: 50_000,
 			taskSpeed:   20,
 		},
 	}
 	if !ready {
 		gob.Hp = 100
-		gob.Building.Status = STATUS_UNDER_CONSTRUCTION
+		gob.Building.Status = BUILDING_STATUS_UNDER_CONSTRUCTION
 		gob.Building.LeftToBuild = gob.Building.TimeToBuild
 	}
 	return gob
@@ -202,8 +244,8 @@ type Building struct {
 	Type        string
 	Task        Task
 	Status      string
-	LeftToBuild int
-	TimeToBuild int
+	LeftToBuild int64
+	TimeToBuild int64
 	taskSpeed   int
 }
 
@@ -216,7 +258,7 @@ type Unit struct {
 	Type   string
 	dps    int
 	speed  int
-	Status int
+	Status string
 	yps    int
 }
 
@@ -272,7 +314,7 @@ func (g Game) String() string {
 
 func sendSCV(g *Game, player string, locID int, destID int) error {
 	for i, gob := range g.Objects {
-		if gob.Unit.Type == UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Unit.Status == STATUS_IDLE {
+		if gob.Unit.Type == UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Unit.Status == UNIT_STATUS_IDLE {
 			g.Objects[i].Location = destID
 			return nil
 		}
@@ -280,17 +322,14 @@ func sendSCV(g *Game, player string, locID int, destID int) error {
 	return fmt.Errorf("couldn't find any IDLE SCVs at location %d for player %s", locID, player)
 }
 
-func statusSCV(g *Game, player string, locID int, status_from int, status_to int) error {
+func statusSCV(g *Game, player string, locID int, status_from string, status_to string) error {
 	for i, gob := range g.Objects {
 		if gob.Unit.Type == UNIT_SCV && gob.Owner == player && gob.Location == locID && gob.Unit.Status == status_from {
 			g.Objects[i].Unit.Status = status_to
 			return nil
 		}
 	}
-	if status_from == STATUS_MINING {
-		return fmt.Errorf("couldn't find any MINING SCVs at location %d for player %s", locID, player)
-	}
-	return fmt.Errorf("couldn't find any IDLE SCVs at location %d for player %s", locID, player)
+	return fmt.Errorf("couldn't find any %s SCVs at location %d for player %s", status_from, locID, player)
 }
 
 func build(g *Game, player string, locID int, building string) error {
@@ -300,7 +339,7 @@ func build(g *Game, player string, locID int, building string) error {
 		}
 		var scv *GameObject
 		for i, gob := range g.Objects {
-			if gob.Location == locID && gob.Unit.Type == UNIT_SCV && gob.Owner == player && gob.Unit.Status == STATUS_IDLE {
+			if gob.Location == locID && gob.Unit.Type == UNIT_SCV && gob.Owner == player && gob.Unit.Status == UNIT_STATUS_IDLE {
 				scv = &g.Objects[i]
 				break
 			}
@@ -308,7 +347,7 @@ func build(g *Game, player string, locID int, building string) error {
 		if scv == nil {
 			return fmt.Errorf("couldn't find idle scv at location %d", locID)
 		}
-		scv.Unit.Status = STATUS_BUILDING
+		scv.Unit.Status = UNIT_STATUS_BUILDING
 		g.Players[player].Minerals -= 150
 		g.Objects = append(g.Objects, Barracks(player, locID, false))
 		log.Printf("%s is building %s", player, building)

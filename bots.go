@@ -62,7 +62,7 @@ func triggerBot(gameName string, botName string) {
 		minerals := g.Players[botName].Minerals
 		homeId := 0
 		var commandCenter *GameObject
-		perLocOwner := make(map[int]map[string]map[int]int)
+		perLocOwner := make(map[int]map[string]map[string]int)
 		for j, gob := range g.Objects {
 			if gob.Owner == botName && gob.Building.Type == BUILDING_COMMAND_CENTER {
 				homeId = gob.Location
@@ -73,11 +73,11 @@ func triggerBot(gameName string, botName string) {
 				continue
 			}
 			if _, ok := perLocOwner[gob.Location]; !ok {
-				perLocOwner[gob.Location] = make(map[string]map[int]int)
-				perLocOwner[gob.Location][gob.Owner] = make(map[int]int)
+				perLocOwner[gob.Location] = make(map[string]map[string]int)
+				perLocOwner[gob.Location][gob.Owner] = make(map[string]int)
 			}
 			if _, ok := perLocOwner[gob.Location][gob.Owner]; !ok {
-				perLocOwner[gob.Location][gob.Owner] = make(map[int]int)
+				perLocOwner[gob.Location][gob.Owner] = make(map[string]int)
 			}
 			if _, ok := perLocOwner[gob.Location][gob.Owner][gob.Unit.Status]; !ok {
 				perLocOwner[gob.Location][gob.Owner][gob.Unit.Status] = 0
@@ -86,7 +86,7 @@ func triggerBot(gameName string, botName string) {
 		}
 		if len(perLocOwner[homeId]) > 1 {
 			// We are under attack
-			for i := 0; i < perLocOwner[homeId][botName][STATUS_MINING]; i++ {
+			for i := 0; i < perLocOwner[homeId][botName][UNIT_STATUS_MINING]; i++ {
 				rURL := fmt.Sprintf("/?player=%s&location_id=%d&idle_scv", botName, homeId)
 				_, err := makeBotRequestOverridable(rURL)
 				if err != nil {
@@ -94,7 +94,7 @@ func triggerBot(gameName string, botName string) {
 				}
 			}
 		} else {
-			for i := 0; i < perLocOwner[homeId][botName][STATUS_IDLE]; i++ {
+			for i := 0; i < perLocOwner[homeId][botName][UNIT_STATUS_IDLE]; i++ {
 				rURL := fmt.Sprintf("/?player=%s&location_id=%d&scv_to_work", botName, homeId)
 				_, err := makeBotRequestOverridable(rURL)
 				if err != nil {

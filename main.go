@@ -229,14 +229,14 @@ func handleRunningGame(w *http.ResponseWriter, values url.Values, player string,
 
 	if checkGetParamExists(values, "scv_to_work") {
 		log.Printf("%s is sending SCV to work", player)
-		err = statusSCV(g, player, locID, STATUS_IDLE, STATUS_MINING)
+		err = statusSCV(g, player, locID, UNIT_STATUS_IDLE, UNIT_STATUS_MINING)
 		httpGiveErr(w, err)
 		return
 	}
 
 	if checkGetParamExists(values, "idle_scv") {
 		log.Printf("%s is sending SCV to idle", player)
-		err = statusSCV(g, player, locID, STATUS_MINING, STATUS_IDLE)
+		err = statusSCV(g, player, locID, UNIT_STATUS_MINING, UNIT_STATUS_IDLE)
 		httpGiveErr(w, err)
 		return
 	}

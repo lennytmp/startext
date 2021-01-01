@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func fakeMakeBotRequest(url string) ([]byte, error) {
@@ -72,7 +74,7 @@ func TestPlayWithBot(t *testing.T) {
 		if gob.Owner == "0" {
 			continue
 		}
-		if gob.Unit.Type == UNIT_SCV && gob.Unit.Status == STATUS_IDLE {
+		if gob.Unit.Type == UNIT_SCV && gob.Unit.Status == UNIT_STATUS_IDLE {
 			t.Errorf("Expected the bot to send all SCVs to mine minerals, found idle instead %v", gob)
 		}
 		if gob.Building.Type == BUILDING_COMMAND_CENTER && gob.Task == (Task{}) {
@@ -109,9 +111,13 @@ func TestBuildBarracks(t *testing.T) {
 		t.Errorf("got %v wanted %v as a substring", body, wantResp)
 	}
 	found := false
-	for _, gob := range g.Objects {
+	testBuildTime := 300 * time.Millisecond
+	for i, gob := range g.Objects {
 		if gob.Owner == testOwner && gob.Building.Type == BUILDING_BARRACKS {
 			found = true
+			g.Objects[i].TimeToBuild = testBuildTime.Milliseconds()
+			g.Objects[i].LeftToBuild = testBuildTime.Milliseconds()
+			break
 		}
 	}
 	if !found {
@@ -119,6 +125,36 @@ func TestBuildBarracks(t *testing.T) {
 	}
 	if g.Players[testOwner].Minerals != 0 {
 		t.Errorf("expected 0 balance for player 0, but found %d", g.Players[testOwner].Minerals)
+	}
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*testBuildTime)
+	defer cancel()
+	barracksID := 0
+	for {
+		gameSim(g)
+		done := false
+		for k, gob := range g.Objects {
+			if gob.Owner == testOwner && gob.Building.Type == BUILDING_BARRACKS && gob.Hp == gob.HpMax {
+				done = true
+				barracksID = k
+				break
+			}
+		}
+		if done {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Errorf("barracks were not built in time: %s", g.Export(testOwner))
+			break
+		}
+	}
+	elapsed := time.Now().Sub(start)
+	highB := (testBuildTime + 5*time.Millisecond).Milliseconds()
+	if elapsed.Milliseconds() < testBuildTime.Milliseconds() || elapsed.Milliseconds() > highB {
+		t.Errorf("expected construction to take %dms but it took %dms", testBuildTime.Milliseconds(), elapsed.Milliseconds())
+	}
+	if st := g.Objects[barracksID].Building.Status; st != BUILDING_STATUS_IDLE {
+		t.Errorf("expected idle status for barracks, got %s", st)
 	}
 }
 
